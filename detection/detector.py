@@ -3,7 +3,7 @@
 import json
 import urllib.parse
 import urllib.request
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
@@ -25,14 +25,14 @@ def fetch(url: str, name: str, start: str, end: str, tags: Optional[str] = None)
         points = json.loads(resp.read())["points"]
     return to_frame(points)
 
-def zscore_flags(df: pd.DataFrame, window: int = 60, threshold: float = 3.0) -> List[Dict[str, Any]]:
-    """Flag points whose rolling z-score is above the threshold"""
+def _flag_series(df: pd.DataFrame, make_window: Callable, threshold: float, rule: str) -> List[Dict[str, Any]]:
+    """Score each series against its own past and return flags above the threshold."""
     flags: List[Dict[str, Any]] = []
     for (name, _), group in df.groupby(["name", "series"]):
         group = group.sort_values("ts")
         values = group["value"]
 
-        past = values.rolling(window, min_periods=window)
+        past = make_window(values)
         mean = past.mean().shift(1)
         std = past.std().shift(1)
 
@@ -46,6 +46,18 @@ def zscore_flags(df: pd.DataFrame, window: int = 60, threshold: float = 3.0) -> 
                 "ts": row["ts"].strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "value": row["value"],
                 "score": round(float(z[idx]), 2),
-                "rule": "zscore",
+                "rule": rule,
             })
     return flags
+
+
+def zscore_flags(df: pd.DataFrame, window: int = 60, threshold: float = 3.0) -> List[Dict[str, Any]]:
+    """Flag points whose rolling z-score is above the threshold."""
+    return _flag_series(df, lambda v: v.rolling(window, min_periods=window), threshold, "zscore")
+
+
+def ewma_flags(
+    df: pd.DataFrame, alpha: float = 0.05, warmup: int = 60, threshold: float = 3.0
+) -> List[Dict[str, Any]]:
+    """Flag points far from the exponentially weighted mean of the points before them."""
+    return _flag_series(df, lambda v: v.ewm(alpha=alpha, min_periods=warmup), threshold, "ewma")

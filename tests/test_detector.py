@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from detection.detector import to_frame, zscore_flags
+from detection.detector import ewma_flags, to_frame, zscore_flags
 
 ACME = {"client": "acme", "env": "prod"}
 STAGING = {"client": "acme", "env": "staging"}
@@ -61,3 +61,29 @@ def test_series_are_scored_separately():
     staging = [v - 600 for v in normal_values(100)]
     df = to_frame(make_points(prod, ACME) + make_points(staging, STAGING))
     assert zscore_flags(df) == []
+
+
+def test_ewma_flags_a_spike():
+    values = normal_values(100)
+    values[80] = 4000
+    flags = ewma_flags(to_frame(make_points(values, ACME)))
+    assert len(flags) == 1
+    assert flags[0]["value"] == 4000
+    assert flags[0]["rule"] == "ewma"
+
+
+def test_ewma_no_flags_on_normal_data():
+    assert ewma_flags(to_frame(make_points(normal_values(200), ACME))) == []
+
+
+def test_ewma_spike_inside_warmup_is_not_scored():
+    values = normal_values(100)
+    values[30] = 4000
+    assert ewma_flags(to_frame(make_points(values, ACME))) == []
+
+
+def test_ewma_series_are_scored_separately():
+    prod = normal_values(100)
+    staging = [v - 600 for v in normal_values(100)]
+    df = to_frame(make_points(prod, ACME) + make_points(staging, STAGING))
+    assert ewma_flags(df) == []
