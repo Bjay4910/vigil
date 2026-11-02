@@ -1,0 +1,27 @@
+services:
+  store:
+    build: .
+    # Change to "8000:8000" only when you deliberately expose the store, and set VIGIL_API_KEY first.
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      VIGIL_API_KEY: ${VIGIL_API_KEY:-}
+    volumes:
+      - vigil-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import sys, urllib.request; resp = urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4); sys.exit(0 if resp.getcode() == 200 else 1)",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  vigil-data:
+

@@ -38,7 +38,23 @@ The full spec lives in `docs/metric-format.md`.
 
 ## Quick start
 
-Coming soon.
+1. **Run with Docker:** Copy `.env.example` to `.env`, set `VIGIL_API_KEY` to a long random string, run `docker compose up --build`, then open http://127.0.0.1:8000/dashboard (enter the key in the key box).
+2. **Run without Docker:**
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements-dev.txt
+   python -m uvicorn store.api:create_app --factory --port 8000
+   ```
+3. **Run the tests:**
+   ```bash
+   python -m pytest -q
+   ```
+4. **Try it with fake data:**
+   ```bash
+   python -m detection.generate --url http://127.0.0.1:8000
+   ```
+5. **Send metrics from your own code:** Use the TypeScript SDK in `sdk/` (see `sdk/README.md`).
 
 ## Contributing
 
