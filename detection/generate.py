@@ -87,12 +87,16 @@ def batches(points: List[Dict[str, Any]], size: int = 500) -> Iterator[List[Dict
 def send(points: List[Dict[str, Any]], url: str, batch_size: int = 500) -> int:
     """ Post points to {url}/ingest in batches. Return how many were accepted """
     accepted = 0
+    headers = {"Content-Type": "application/json"}
+    api_key = os.environ.get("VIGIL_API_KEY")
+    if api_key:
+        headers["X-API-Key"] = api_key
     for chunk in batches(points, batch_size):
         body = json.dumps({"points": chunk}).encode("utf-8")
         req = urllib.request.Request(
             url.rstrip("/") + "/ingest",
             data = body,
-            headers={"Content-Type": "application/json"},
+            headers=headers,
             method="POST"
         )
         with urllib.request.urlopen(req) as resp:
