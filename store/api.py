@@ -3,10 +3,11 @@
 import hmac
 import math
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from store.engine import TimeSeriesStore, ValidationError
 
 
@@ -175,5 +176,10 @@ def create_app(
     @app.get("/health")
     async def health() -> Any:
         return {"status": "ok", "points": len(store)}
+
+    @app.get("/dashboard")
+    async def dashboard() -> HTMLResponse:
+        html_path = Path(__file__).parent / "static" / "dashboard.html"
+        return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
 
     return app
