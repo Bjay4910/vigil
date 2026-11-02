@@ -1,4 +1,5 @@
 # vigil
+[![CI](https://github.com/Bjay4910/vigil/actions/workflows/ci.yml/badge.svg)](https://github.com/Bjay4910/vigil/actions/workflows/ci.yml)
 
 Lightweight observability platform: a metrics SDK, a from-scratch time-series store, and anomaly detection. Built to monitor real client sites and automations.
 
