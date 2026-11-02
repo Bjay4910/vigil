@@ -1,5 +1,6 @@
 """FastAPI application for time-series store."""
 
+import hmac
 import os
 from typing import Any, Dict, List, Optional
 
@@ -13,16 +14,39 @@ def error_response(message: str) -> JSONResponse:
     return JSONResponse(status_code=400, content={"error": message})
 
 
-def create_app(store: Optional[TimeSeriesStore] = None) -> FastAPI:
+def unauthorized_response() -> JSONResponse:
+    """Return a standard 401 JSON unauthorized response."""
+    return JSONResponse(status_code=401, content={"error": "unauthorized"})
+
+
+def create_app(
+    store: Optional[TimeSeriesStore] = None,
+    api_key: Optional[str] = None,
+) -> FastAPI:
     """Create and configure the FastAPI application."""
     if store is None:
         data_path = os.environ.get("VIGIL_DATA_PATH", "data/points.jsonl")
         store = TimeSeriesStore(data_path)
 
+    if api_key is None:
+        api_key = os.environ.get("VIGIL_API_KEY")
+    effective_key: Optional[str] = api_key if api_key else None
+
+    def is_authorized(request: Request) -> bool:
+        if effective_key is None:
+            return True
+        provided = request.headers.get("X-API-Key")
+        if provided is None:
+            return False
+        return hmac.compare_digest(provided, effective_key)
+
     app = FastAPI()
 
     @app.post("/ingest")
     async def ingest(request: Request) -> Any:
+        if not is_authorized(request):
+            return unauthorized_response()
+
         try:
             body = await request.json()
         except Exception:
@@ -41,11 +65,15 @@ def create_app(store: Optional[TimeSeriesStore] = None) -> FastAPI:
 
     @app.get("/query")
     async def query(
+        request: Request,
         name: Optional[str] = Query(default=None),
         start: Optional[str] = Query(default=None, alias="from"),
         end: Optional[str] = Query(default=None, alias="to"),
         tags: Optional[str] = Query(default=None),
     ) -> Any:
+        if not is_authorized(request):
+            return unauthorized_response()
+
         if name is None or name == "":
             return error_response("name: required")
         if start is None or start == "":
