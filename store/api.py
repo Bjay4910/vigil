@@ -1,6 +1,7 @@
 """FastAPI application for time-series store."""
 
 import hmac
+import math
 import os
 from typing import Any, Dict, List, Optional
 
@@ -96,6 +97,80 @@ def create_app(
             return error_response(str(e))
 
         return {"points": points}
+
+    @app.get("/flags")
+    async def flags(
+        request: Request,
+        name: Optional[str] = Query(default=None),
+        start: Optional[str] = Query(default=None, alias="from"),
+        end: Optional[str] = Query(default=None, alias="to"),
+        tags: Optional[str] = Query(default=None),
+        rule: Optional[str] = Query(default="zscore"),
+        threshold: Optional[str] = Query(default="3.0"),
+    ) -> Any:
+        if not is_authorized(request):
+            return unauthorized_response()
+
+        if name is None or name == "":
+            return error_response("name: required")
+        if start is None or start == "":
+            return error_response("from: required")
+        if end is None or end == "":
+            return error_response("to: required")
+
+        tags_dict: Optional[Dict[str, str]] = None
+        if tags is not None and tags != "":
+            tags_dict = {}
+            for pair in tags.split(","):
+                if ":" not in pair:
+                    return error_response("tags: expected key:value pairs separated by commas")
+                k, v = pair.split(":", 1)
+                tags_dict[k] = v
+
+        if rule not in ("zscore", "ewma"):
+            return error_response("rule: must be zscore or ewma")
+
+        try:
+            threshold_val = float(threshold) if threshold is not None else 0.0
+        except (TypeError, ValueError):
+            return error_response("threshold: must be a number greater than 0")
+        if math.isnan(threshold_val) or math.isinf(threshold_val) or threshold_val <= 0:
+            return error_response("threshold: must be a number greater than 0")
+
+        try:
+            points = store.query(name=name, start=start, end=end, tags=tags_dict)
+        except ValidationError as e:
+            return error_response(str(e))
+
+        if not points:
+            return {"rule": rule, "threshold": float(threshold_val), "flags": []}
+
+        from detection.detector import ewma_flags, to_frame, zscore_flags
+
+        df = to_frame(points)
+        if rule == "zscore":
+            raw_flags = zscore_flags(df, threshold=threshold_val)
+        else:
+            raw_flags = ewma_flags(df, threshold=threshold_val)
+
+        cleaned_flags: List[Dict[str, Any]] = [
+            {
+                "name": str(f["name"]),
+                "tags": {str(k): str(v) for k, v in dict(f["tags"]).items()},
+                "ts": str(f["ts"]),
+                "value": float(f["value"]),
+                "score": float(f["score"]),
+                "rule": str(f["rule"]),
+            }
+            for f in raw_flags
+        ]
+        cleaned_flags.sort(key=lambda item: item["ts"])
+
+        return {
+            "rule": rule,
+            "threshold": float(threshold_val),
+            "flags": cleaned_flags,
+        }
 
     @app.get("/health")
     async def health() -> Any:
