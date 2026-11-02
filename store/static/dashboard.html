@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vigil</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f8fafc;
+      --panel: #ffffff;
+      --border: #cbd5e1;
+      --grid: #e2e8f0;
+      --text: #0f172a;
+      --muted: #475569;
+      --accent: #2563eb;
+      --danger: #dc2626;
+      --danger-bg: #fef2f2;
+      --input-bg: #ffffff;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f172a;
+        --panel: #1e293b;
+        --border: #334155;
+        --grid: #334155;
+        --text: #f8fafc;
+        --muted: #94a3b8;
+        --accent: #3b82f6;
+        --danger: #ef4444;
+        --danger-bg: #450a0a;
+        --input-bg: #0f172a;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 1rem;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.4;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.4rem;
+    }
+
+    .subtitle {
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 0.6rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      min-width: 110px;
+      flex: 1 1 auto;
+    }
+
+    .field label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    input[type="text"],
+    input[type="password"],
+    input[type="number"],
+    select {
+      padding: 0.4rem 0.5rem;
+      font-size: 0.85rem;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      background: var(--input-bg);
+      color: var(--text);
+      width: 100%;
+    }
+
+    .quick-ranges {
+      display: flex;
+      gap: 0.25rem;
+      align-items: center;
+    }
+
+    button {
+      padding: 0.42rem 0.65rem;
+      font-size: 0.85rem;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      background: var(--panel);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+      font-weight: 600;
+    }
+
+    .autorefresh-wrap {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.85rem;
+      padding-bottom: 0.3rem;
+      white-space: nowrap;
+    }
+
+    .banner {
+      padding: 0.6rem 0.8rem;
+      border-radius: 6px;
+      margin-bottom: 0.75rem;
+      font-size: 0.9rem;
+      border: 1px solid var(--danger);
+      background: var(--danger-bg);
+      color: var(--danger);
+      display: none;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.85rem;
+      margin-bottom: 0.75rem;
+      position: relative;
+    }
+
+    .chart-wrap {
+      width: 100%;
+      position: relative;
+    }
+
+    svg.chart {
+      width: 100%;
+      height: auto;
+      display: block;
+      overflow: visible;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-top: 0.5rem;
+      font-size: 0.82rem;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .legend-swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      display: inline-block;
+    }
+
+    .summary {
+      font-size: 0.9rem;
+      margin-top: 0.5rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .empty-msg {
+      color: var(--muted);
+      font-size: 0.9rem;
+      padding: 0.75rem 0;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 0.45rem 0.6rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .tooltip {
+      position: fixed;
+      pointer-events: none;
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.45rem 0.6rem;
+      font-size: 0.78rem;
+      white-space: pre-line;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      display: none;
+      z-index: 100;
+    }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 0.5rem;
+      }
+      .field {
+        min-width: 140px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Vigil</h1>
+      <span class="subtitle">Metrics &amp; Anomaly Detection Dashboard</span>
+    </header>
+
+    <div class="controls">
+      <div class="field">
+        <label for="api-key-input">API Key</label>
+        <input type="password" id="api-key-input" placeholder="Optional X-API-Key" autocomplete="off">
+      </div>
+
+      <div class="field">
+        <label for="metric-input">Metric</label>
+        <input type="text" id="metric-input" value="page_load_ms">
+      </div>
+
+      <div class="field">
+        <label for="tags-input">Tags</label>
+        <input type="text" id="tags-input" placeholder="client:acme,env:prod">
+      </div>
+
+      <div class="field">
+        <label for="from-input">From (UTC)</label>
+        <input type="text" id="from-input">
+      </div>
+
+      <div class="field">
+        <label for="to-input">To (UTC)</label>
+        <input type="text" id="to-input">
+      </div>
+
+      <div class="quick-ranges">
+        <button type="button" data-hours="1">1h</button>
+        <button type="button" data-hours="6">6h</button>
+        <button type="button" data-hours="24">24h</button>
+        <button type="button" data-hours="168">7d</button>
+      </div>
+
+      <div class="field" style="min-width: 90px; flex: 0 1 110px;">
+        <label for="rule-select">Rule</label>
+        <select id="rule-select">
+          <option value="zscore">zscore</option>
+          <option value="ewma">ewma</option>
+        </select>
+      </div>
+
+      <div class="field" style="min-width: 85px; flex: 0 1 95px;">
+        <label for="threshold-input">Threshold</label>
+        <input type="number" id="threshold-input" value="3.0" step="0.1" min="0.1">
+      </div>
+
+      <button type="button" id="load-btn" class="primary">Load</button>
+
+      <label class="autorefresh-wrap" for="autorefresh-checkbox">
+        <input type="checkbox" id="autorefresh-checkbox">
+        Auto-refresh (10s)
+      </label>
+    </div>
+
+    <div id="error-banner" class="banner" role="alert"></div>
+
+    <div class="panel">
+      <div id="chart-container" class="chart-wrap">
+        <div class="empty-msg">Click Load to fetch metrics.</div>
+      </div>
+      <div id="legend-container" class="legend"></div>
+      <div id="summary-container" class="summary"></div>
+    </div>
+
+    <div class="panel">
+      <h2 style="margin: 0 0 0.5rem 0; font-size: 1rem;">Flags</h2>
+      <div id="flags-container" class="table-wrap">
+        <div class="empty-msg">No flags</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="tooltip" class="tooltip"></div>
+
+  <script>
+    (function () {
+      const PALETTE = [
+        "#2563eb",
+        "#16a34a",
+        "#d97706",
+        "#9333ea",
+        "#0891b2",
+        "#db2777"
+      ];
+      const MONTHS = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+      ];
+      const SVG_NS = "http://www.w3.org/2000/svg";
+
+      let apiKeyMemory = "";
+      let refreshTimer = null;
+
+      const apiKeyInput = document.getElementById("api-key-input");
+      const metricInput = document.getElementById("metric-input");
+      const tagsInput = document.getElementById("tags-input");
+      const fromInput = document.getElementById("from-input");
+      const toInput = document.getElementById("to-input");
+      const ruleSelect = document.getElementById("rule-select");
+      const thresholdInput = document.getElementById("threshold-input");
+      const loadBtn = document.getElementById("load-btn");
+      const autorefreshCheckbox = document.getElementById("autorefresh-checkbox");
+      const errorBanner = document.getElementById("error-banner");
+      const chartContainer = document.getElementById("chart-container");
+      const legendContainer = document.getElementById("legend-container");
+      const summaryContainer = document.getElementById("summary-container");
+      const flagsContainer = document.getElementById("flags-container");
+      const tooltip = document.getElementById("tooltip");
+
+      apiKeyInput.addEventListener("input", function () {
+        apiKeyMemory = apiKeyInput.value.trim();
+      });
+
+      function setRelativeRange(hours) {
+        const now = new Date();
+        const toStr = now.toISOString().slice(0, 19) + "Z";
+        const fromDate = new Date(now.getTime() - hours * 3600 * 1000);
+        const fromStr = fromDate.toISOString().slice(0, 19) + "Z";
+        fromInput.value = fromStr;
+        toInput.value = toStr;
+      }
+
+      setRelativeRange(24);
+
+      const quickButtons = document.querySelectorAll(".quick-ranges button");
+      quickButtons.forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          const hours = Number(btn.getAttribute("data-hours") || "24");
+          setRelativeRange(hours);
+        });
+      });
+
+      function clearChildren(el) {
+        while (el.firstChild) {
+          el.removeChild(el.firstChild);
+        }
+      }
+
+      function showError(msg) {
+        errorBanner.textContent = msg;
+        errorBanner.style.display = "block";
+      }
+
+      function hideError() {
+        errorBanner.textContent = "";
+        errorBanner.style.display = "none";
+      }
+
+      function canonicalTagsKey(tags) {
+        const raw = tags || {};
+        const sorted = {};
+        Object.keys(raw).sort().forEach(function (k) {
+          sorted[k] = raw[k];
+        });
+        return JSON.stringify(sorted);
+      }
+
+      function formatTagsLabel(tags) {
+        const raw = tags || {};
+        const keys = Object.keys(raw).sort();
+        if (keys.length === 0) {
+          return "no tags";
+        }
+        return keys.map(function (k) {
+          return k + ":" + raw[k];
+        }).join(", ");
+      }
+
+      function formatUtcTick(ms) {
+        const d = new Date(ms);
+        const mon = MONTHS[d.getUTCMonth()];
+        const day = String(d.getUTCDate()).padStart(2, "0");
+        const hh = String(d.getUTCHours()).padStart(2, "0");
+        const mm = String(d.getUTCMinutes()).padStart(2, "0");
+        return mon + " " + day + " " + hh + ":" + mm;
+      }
+
+      function showTooltip(evt, text) {
+        tooltip.textContent = text;
+        tooltip.style.display = "block";
+        const offset = 12;
+        let x = evt.clientX + offset;
+        let y = evt.clientY + offset;
+        if (x + 220 > window.innerWidth) {
+          x = Math.max(8, evt.clientX - 220);
+        }
+        if (y + 110 > window.innerHeight) {
+          y = Math.max(8, evt.clientY - 110);
+        }
+        tooltip.style.left = x + "px";
+        tooltip.style.top = y + "px";
+      }
+
+      function hideTooltip() {
+        tooltip.style.display = "none";
+      }
+
+      function renderFlagsTable(flags) {
+        clearChildren(flagsContainer);
+        if (!flags || flags.length === 0) {
+          const empty = document.createElement("div");
+          empty.className = "empty-msg";
+          empty.textContent = "No flags";
+          flagsContainer.appendChild(empty);
+          return;
+        }
+
+        const sortedFlags = flags.slice().sort(function (a, b) {
+          return String(a.ts).localeCompare(String(b.ts));
+        });
+
+        const table = document.createElement("table");
+        const thead = document.createElement("thead");
+        const headerRow = document.createElement("tr");
+        ["Time (UTC)", "Value", "Score", "Rule", "Tags"].forEach(function (col) {
+          const th = document.createElement("th");
+          th.textContent = col;
+          headerRow.appendChild(th);
+        });
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement("tbody");
+        sortedFlags.forEach(function (f) {
+          const tr = document.createElement("tr");
+          const cells = [
+            String(f.ts),
+            String(f.value),
+            String(f.score),
+            String(f.rule),
+            formatTagsLabel(f.tags)
+          ];
+          cells.forEach(function (val) {
+            const td = document.createElement("td");
+            td.textContent = val;
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        flagsContainer.appendChild(table);
+      }
+
+      function renderDashboard(points, flags) {
+        renderFlagsTable(flags);
+        clearChildren(legendContainer);
+        clearChildren(summaryContainer);
+
+        if (!points || points.length === 0) {
+          clearChildren(chartContainer);
+          const msg = document.createElement("div");
+          msg.className = "empty-msg";
+          msg.textContent = "No points in this range";
+          chartContainer.appendChild(msg);
+          summaryContainer.textContent = "Points: 0 | Flags: 0 | Min: - | Max: - | Last: -";
+          return;
+        }
+
+        let minVal = Infinity;
+        let maxVal = -Infinity;
+        let minTime = Infinity;
+        let maxTime = -Infinity;
+
+        const seriesMap = new Map();
+        points.forEach(function (pt) {
+          const key = canonicalTagsKey(pt.tags);
+          if (!seriesMap.has(key)) {
+            seriesMap.set(key, {
+              tags: pt.tags || {},
+              label: formatTagsLabel(pt.tags),
+              points: []
+            });
+          }
+          const tMs = Date.parse(pt.ts);
+          const v = Number(pt.value);
+          if (v < minVal) minVal = v;
+          if (v > maxVal) maxVal = v;
+          if (tMs < minTime) minTime = tMs;
+          if (tMs > maxTime) maxTime = tMs;
+          seriesMap.get(key).points.push({
+            ts: pt.ts,
+            tMs: tMs,
+            value: v,
+            tags: pt.tags || {}
+          });
+        });
+
+        const lastValue = points[points.length - 1].value;
+        summaryContainer.textContent =
+          "Points: " + points.length +
+          " | Flags: " + flags.length +
+          " | Min: " + minVal +
+          " | Max: " + maxVal +
+          " | Last: " + lastValue;
+
+        const flagLookup = new Map();
+        flags.forEach(function (f) {
+          const fk = canonicalTagsKey(f.tags) + "|" + f.ts;
+          flagLookup.set(fk, f);
+        });
+
+        let yMin = minVal;
+        let yMax = maxVal;
+        if (yMin === yMax) {
+          yMin = yMin - 1;
+          yMax = yMax + 1;
+        } else {
+          const pad = (yMax - yMin) * 0.08;
+          yMin -= pad;
+          yMax += pad;
+        }
+
+        let tMin = minTime;
+        let tMax = maxTime;
+        if (tMin === tMax) {
+          tMin -= 60000;
+          tMax += 60000;
+        }
+
+        const width = 920;
+        const height = 340;
+        const padLeft = 64;
+        const padRight = 24;
+        const padTop = 20;
+        const padBottom = 42;
+        const plotW = width - padLeft - padRight;
+        const plotH = height - padTop - padBottom;
+
+        function xScale(tMs) {
+          return padLeft + ((tMs - tMin) / (tMax - tMin)) * plotW;
+        }
+
+        function yScale(val) {
+          return padTop + plotH - ((val - yMin) / (yMax - yMin)) * plotH;
+        }
+
+        const svg = document.createElementNS(SVG_NS, "svg");
+        svg.setAttribute("viewBox", "0 0 " + width + " " + height);
+        svg.setAttribute("class", "chart");
+
+        const yTicks = 5;
+        for (let i = 0; i <= yTicks; i++) {
+          const ratio = i / yTicks;
+          const v = yMin + ratio * (yMax - yMin);
+          const y = yScale(v);
+
+          const line = document.createElementNS(SVG_NS, "line");
+          line.setAttribute("x1", String(padLeft));
+          line.setAttribute("x2", String(width - padRight));
+          line.setAttribute("y1", String(y));
+          line.setAttribute("y2", String(y));
+          line.setAttribute("stroke", "var(--grid)");
+          line.setAttribute("stroke-width", "1");
+          svg.appendChild(line);
+
+          const label = document.createElementNS(SVG_NS, "text");
+          label.setAttribute("x", String(padLeft - 8));
+          label.setAttribute("y", String(y + 4));
+          label.setAttribute("text-anchor", "end");
+          label.setAttribute("fill", "var(--muted)");
+          label.setAttribute("font-size", "11");
+          label.textContent = Number(v.toFixed(1)).toString();
+          svg.appendChild(label);
+        }
+
+        const xTicks = 5;
+        for (let i = 0; i <= xTicks; i++) {
+          const ratio = i / xTicks;
+          const tMs = tMin + ratio * (tMax - tMin);
+          const x = xScale(tMs);
+
+          const line = document.createElementNS(SVG_NS, "line");
+          line.setAttribute("x1", String(x));
+          line.setAttribute("x2", String(x));
+          line.setAttribute("y1", String(padTop));
+          line.setAttribute("y2", String(padTop + plotH));
+          line.setAttribute("stroke", "var(--grid)");
+          line.setAttribute("stroke-width", "1");
+          svg.appendChild(line);
+
+          const label = document.createElementNS(SVG_NS, "text");
+          label.setAttribute("x", String(x));
+          label.setAttribute("y", String(height - 12));
+          label.setAttribute("text-anchor", "middle");
+          label.setAttribute("fill", "var(--muted)");
+          label.setAttribute("font-size", "11");
+          label.textContent = formatUtcTick(tMs);
+          svg.appendChild(label);
+        }
+
+        let seriesIndex = 0;
+        seriesMap.forEach(function (series, sKey) {
+          const color = PALETTE[seriesIndex % PALETTE.length];
+          seriesIndex += 1;
+
+          series.points.sort(function (a, b) {
+            return a.tMs - b.tMs;
+          });
+
+          const pathParts = series.points.map(function (pt, idx) {
+            const x = xScale(pt.tMs).toFixed(2);
+            const y = yScale(pt.value).toFixed(2);
+            return (idx === 0 ? "M " : "L ") + x + " " + y;
+          });
+
+          const path = document.createElementNS(SVG_NS, "path");
+          path.setAttribute("d", pathParts.join(" "));
+          path.setAttribute("fill", "none");
+          path.setAttribute("stroke", color);
+          path.setAttribute("stroke-width", "2");
+          svg.appendChild(path);
+
+          series.points.forEach(function (pt) {
+            const cx = xScale(pt.tMs);
+            const cy = yScale(pt.value);
+            const matchFlag = flagLookup.get(sKey + "|" + pt.ts);
+
+            const circle = document.createElementNS(SVG_NS, "circle");
+            circle.setAttribute("cx", String(cx));
+            circle.setAttribute("cy", String(cy));
+
+            if (matchFlag) {
+              circle.setAttribute("r", "6");
+              circle.setAttribute("fill", "#dc2626");
+              circle.setAttribute("stroke", "#ffffff");
+              circle.setAttribute("stroke-width", "1.5");
+            } else {
+              circle.setAttribute("r", "3");
+              circle.setAttribute("fill", color);
+            }
+
+            let tipText =
+              "Time: " + pt.ts +
+              "\nValue: " + pt.value +
+              "\nTags: " + series.label;
+            if (matchFlag) {
+              tipText +=
+                "\nScore: " + matchFlag.score +
+                "\nRule: " + matchFlag.rule;
+            }
+
+            circle.addEventListener("mouseenter", function (evt) {
+              showTooltip(evt, tipText);
+            });
+            circle.addEventListener("mousemove", function (evt) {
+              showTooltip(evt, tipText);
+            });
+            circle.addEventListener("mouseleave", hideTooltip);
+
+            svg.appendChild(circle);
+          });
+
+          const item = document.createElement("div");
+          item.className = "legend-item";
+          const swatch = document.createElement("span");
+          swatch.className = "legend-swatch";
+          swatch.style.background = color;
+          const labelSpan = document.createElement("span");
+          labelSpan.textContent = series.label;
+          item.appendChild(swatch);
+          item.appendChild(labelSpan);
+          legendContainer.appendChild(item);
+        });
+
+        clearChildren(chartContainer);
+        chartContainer.appendChild(svg);
+      }
+
+      async function loadDashboard() {
+        apiKeyMemory = apiKeyInput.value.trim();
+        const name = metricInput.value.trim();
+        const fromVal = fromInput.value.trim();
+        const toVal = toInput.value.trim();
+        const tagsVal = tagsInput.value.trim();
+        const ruleVal = ruleSelect.value;
+        const thresholdVal = thresholdInput.value.trim();
+
+        const queryParams = new URLSearchParams();
+        queryParams.set("name", name);
+        queryParams.set("from", fromVal);
+        queryParams.set("to", toVal);
+        if (tagsVal.length > 0) {
+          queryParams.set("tags", tagsVal);
+        }
+
+        const flagsParams = new URLSearchParams(queryParams);
+        flagsParams.set("rule", ruleVal);
+        flagsParams.set("threshold", thresholdVal);
+
+        const headers = {};
+        if (apiKeyMemory.length > 0) {
+          headers["X-API-Key"] = apiKeyMemory;
+        }
+
+        let queryRes;
+        let flagsRes;
+        try {
+          const results = await Promise.all([
+            fetch("/query?" + queryParams.toString(), { headers: headers }),
+            fetch("/flags?" + flagsParams.toString(), { headers: headers })
+          ]);
+          queryRes = results[0];
+          flagsRes = results[1];
+        } catch (_err) {
+          showError("Cannot reach the store");
+          return;
+        }
+
+        if (queryRes.status === 401 || flagsRes.status === 401) {
+          showError("Wrong or missing API key");
+          return;
+        }
+
+        if (queryRes.status === 400) {
+          try {
+            const errJson = await queryRes.json();
+            showError(errJson && errJson.error ? String(errJson.error) : "Invalid request");
+          } catch (_e) {
+            showError("Invalid request");
+          }
+          return;
+        }
+
+        if (flagsRes.status === 400) {
+          try {
+            const errJson = await flagsRes.json();
+            showError(errJson && errJson.error ? String(errJson.error) : "Invalid request");
+          } catch (_e) {
+            showError("Invalid request");
+          }
+          return;
+        }
+
+        if (!queryRes.ok || !flagsRes.ok) {
+          showError("Cannot reach the store");
+          return;
+        }
+
+        let queryData;
+        let flagsData;
+        try {
+          const bodies = await Promise.all([queryRes.json(), flagsRes.json()]);
+          queryData = bodies[0];
+          flagsData = bodies[1];
+        } catch (_e) {
+          showError("Cannot reach the store");
+          return;
+        }
+
+        hideError();
+        renderDashboard(queryData.points || [], flagsData.flags || []);
+      }
+
+      loadBtn.addEventListener("click", function () {
+        void loadDashboard();
+      });
+
+      autorefreshCheckbox.addEventListener("change", function () {
+        if (refreshTimer !== null) {
+          clearInterval(refreshTimer);
+          refreshTimer = null;
+        }
+        if (autorefreshCheckbox.checked) {
+          refreshTimer = setInterval(function () {
+            void loadDashboard();
+          }, 10000);
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
+
