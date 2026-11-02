@@ -1,6 +1,7 @@
 """Anomaly detector: pull points from the store and flag unusual values."""
 
 import json
+import os
 import urllib.parse
 import urllib.request
 from typing import Any, Callable, Dict, List, Optional
@@ -21,7 +22,12 @@ def fetch(url: str, name: str, start: str, end: str, tags: Optional[str] = None)
     if tags:
         params["tags"] = tags
     full_url = url.rstrip("/") + "/query?" + urllib.parse.urlencode(params)
-    with urllib.request.urlopen(full_url) as resp:
+    headers: Dict[str, str] = {}
+    api_key = os.environ.get("VIGIL_API_KEY")
+    if api_key:
+        headers["X-API-Key"] = api_key
+    req = urllib.request.Request(full_url, headers=headers)
+    with urllib.request.urlopen(req) as resp:
         points = json.loads(resp.read())["points"]
     return to_frame(points)
 
