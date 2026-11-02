@@ -1,6 +1,6 @@
 # Metric format
 
-Version 1. Draft for review: Ordi can change anything here in a pull request.
+Version 1.
 
 ## One data point
 
@@ -12,7 +12,7 @@ Version 1. Draft for review: Ordi can change anything here in a pull request.
 
 | Field | Rule |
 | --- | --- |
-| `name` | Lowercase `snake_case` with the unit at the end, like `page_load_ms` |
+| `name` | Lowercase `snake_case`. Put the unit at the end when there is one, like `page_load_ms`; names such as `uptime_up` are fine too. |
 | `value` | A number. Booleans are sent as 1 or 0 |
 | `ts` | ISO 8601 in UTC with a trailing `Z`, to the second |
 | `tags` | Lowercase string keys and values. Allowed keys: `client`, `site`, `env`, `service` |
@@ -49,6 +49,14 @@ Response: `{"accepted": 1}`. An invalid point returns status 400 with a message 
 
 Response: `{"points": [...]}` with points sorted by `ts`, oldest first. `tags` is optional.
 
+## Other endpoints
+
+- **`GET /flags`**: Parameters `name`, `from`, `to`, optional `tags`, `rule` (`zscore` or `ewma`, default `zscore`), and `threshold` (default `3.0`). Runs the detector on matching points and returns `{"rule": ..., "threshold": ..., "flags": [...]}` where each element of `flags` is a detector output record described below, sorted by `ts` (oldest first).
+- **`GET /health`**: Open endpoint. Returns `{"status": "ok", "points": <count>}`.
+- **`GET /dashboard`**: Open endpoint. Returns the self-contained HTML dashboard page.
+
+When `VIGIL_API_KEY` is set on the store, `/ingest`, `/query`, and `/flags` require the header `X-API-Key` to match it. A wrong or missing key returns status `401` with `{"error": "unauthorized"}`.
+
 ## Detector output
 
 One record per flagged point:
@@ -57,8 +65,3 @@ One record per flagged point:
 {"name": "page_load_ms", "tags": {"client": "acme", "env": "prod"}, "ts": "2026-10-06T14:03:11Z", "value": 4200, "score": 5.2, "rule": "zscore"}
 ```
 
-## Open questions
-
-- Is second precision enough for timestamps?
-- Do we need more tag keys?
-- How much history should the detector read per query?

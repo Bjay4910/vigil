@@ -3,7 +3,21 @@
 
 Lightweight observability platform: a metrics SDK, a from-scratch time-series store, and anomaly detection. Built to monitor real client sites and automations.
 
-**Status:** v1 in development (target: Oct 15, 2026)
+**Status:** v1 is working end to end and is not yet deployed against real Orductive systems.
+
+## What it does
+
+Vigil provides a zero-dependency TypeScript SDK (`sdk/`) that validates, batches, and sends metric data points to a FastAPI time-series store (`store/`). The store keeps points sorted in memory per metric and tag set using `bisect`, persists them to an append-only JSON Lines file on disk, and protects `POST /ingest`, `GET /query`, and `GET /flags` with optional `X-API-Key` authentication. An anomaly detector (`detection/`) scores time series using rolling z-score and EWMA rules, and a built-in browser dashboard (`GET /dashboard`) plots series and highlights flagged anomalies.
+
+## Results
+
+Measured on synthetic data. The store ran in a Docker container on an Apple M4 Pro MacBook, and the benchmark client ran on the same machine (macOS, Python 3.9.6):
+
+- **Ingest throughput (`docs/benchmark.md`):** `60,347.5` points/sec (`100,000` synthetic points in `1.657` s across `200` batches of `500`; batch latency median `6.56` ms, p95 `8.21` ms, max `20.78` ms) (a single run).
+- **Query latency for one 10,000-point series (`docs/benchmark.md`):** median `51.48` ms, p95 `72.30` ms, max `72.54` ms.
+- **Backtest precision and recall at threshold `4.0` (`docs/backtest.md`):** `zscore` achieved `92%` precision and `100%` recall (`45` caught, `4` false alarms); `ewma` achieved `94%` precision and `100%` recall (`45` caught, `3` false alarms) across `5 seeds x 3 series x 1440` synthetic points.
+
+See [docs/architecture.md](docs/architecture.md) for the full architecture and design documentation.
 
 ## Components
 
@@ -12,7 +26,7 @@ Lightweight observability platform: a metrics SDK, a from-scratch time-series st
 | `sdk/` | Small library that services import to send metrics |
 | `store/` | Time-series store with an ingestion API and a query API |
 | `detection/` | Anomaly detection (z-score and EWMA) and backtesting |
-| `dashboard/` | Live dashboard for metrics and alerts |
+| `store/static/` | Dashboard page, served at `/dashboard` |
 | `docs/` | Metric format, architecture, benchmark and backtest results |
 | `tests/` | Test suite |
 
@@ -32,9 +46,9 @@ The full spec lives in `docs/metric-format.md`.
 
 - Metrics SDK
 - Time-series store built from scratch
-- One anomaly rule (z-score or EWMA)
+- Two anomaly rules: z-score and EWMA
 - One live dashboard
-- Everything runs with `docker-compose up`
+- Everything runs with `docker compose up --build`
 - Tests, CI, a store benchmark, and an anomaly backtest
 
 ## Quick start
