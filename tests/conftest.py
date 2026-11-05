@@ -7,4 +7,5 @@ import pytest
 def clear_vigil_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     """Ensure VIGIL_API_KEY from the shell environment never leaks into tests."""
     monkeypatch.delenv("VIGIL_API_KEY", raising=False)
+    monkeypatch.delenv("VIGIL_PROJECT_KEYS", raising=False)
 

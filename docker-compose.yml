@@ -6,6 +6,7 @@ services:
       - "127.0.0.1:8000:8000"
     environment:
       VIGIL_API_KEY: ${VIGIL_API_KEY:-}
+      VIGIL_PROJECT_KEYS: ${VIGIL_PROJECT_KEYS:-}
     volumes:
       - vigil-data:/data
     restart: unless-stopped
