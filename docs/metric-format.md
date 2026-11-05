@@ -55,7 +55,7 @@ Response: `{"points": [...]}` with points sorted by `ts`, oldest first. `tags` i
 - **`GET /health`**: Open endpoint. Returns `{"status": "ok", "points": <count>}`.
 - **`GET /dashboard`**: Open endpoint. Returns the self-contained HTML dashboard page.
 
-When `VIGIL_API_KEY` is set on the store, `/ingest`, `/query`, and `/flags` require the header `X-API-Key` to match it. A wrong or missing key returns status `401` with `{"error": "unauthorized"}`.
+When `VIGIL_API_KEY` or `VIGIL_PROJECT_KEYS` is set on the store, `/ingest`, `/query`, and `/flags` require a valid `X-API-Key` header, or they return status `401` with `{"error": "unauthorized"}`. `VIGIL_PROJECT_KEYS` takes a comma-separated list of `site:key` pairs (where each site matches `^[a-z0-9][a-z0-9_-]*$` and each key is at least 16 characters), scoping each project key to a single `site` tag value. A project key may only write points whose `tags.site` matches its site (otherwise `/ingest` returns `403` with `{"error": "forbidden: this key can only write points tagged with its own site"}`) and may only query or flag its own site (automatically filtering to its site when `site` is omitted from `tags`, or returning `403` with `{"error": "forbidden: this key can only read its own site"}` if another site is requested). The admin key (`VIGIL_API_KEY`) remains unrestricted and can read and write all sites.
 
 ## Detector output
 
