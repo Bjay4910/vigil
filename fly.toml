@@ -1,0 +1,36 @@
+# Fly.io configuration for the Vigil store.
+# Secrets (VIGIL_API_KEY, VIGIL_PROJECT_KEYS) are NEVER put in this file; set them with `fly secrets set`.
+app = 'vigil-orductive'
+primary_region = 'iad'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # The store keeps its data in memory, so it must stay running: no auto-stop.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ['app']
+
+  [[http_service.checks]]
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '10s'
+    method = 'GET'
+    path = '/health'
+    protocol = 'http'
+
+# One machine only: the data lives on this machine's volume and in its memory.
+# Do not scale to more than one machine.
+[[mounts]]
+  source = 'vigil_data'
+  destination = '/data'
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+
