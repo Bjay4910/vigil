@@ -48,7 +48,7 @@ def _validate_project_entry(
         raise ValueError(f"VIGIL_PROJECT_KEYS: duplicate site '{site}'")
     if key in seen_keys:
         raise ValueError(f"VIGIL_PROJECT_KEYS: duplicate key for site '{site}'")
-    if admin_key and hmac.compare_digest(key, admin_key):
+    if admin_key and hmac.compare_digest(key.encode("utf-8"), admin_key.encode("utf-8")):
         raise ValueError(f"VIGIL_PROJECT_KEYS: key for site '{site}' must not equal the admin key")
     result[site] = key
     seen_keys.add(key)
@@ -124,11 +124,11 @@ def create_app(
         matched_site: Optional[str] = None
 
         if effective_key is not None:
-            if hmac.compare_digest(provided, effective_key):
+            if hmac.compare_digest(provided.encode("utf-8"), effective_key.encode("utf-8")):
                 matched_role = "admin"
 
         for site_name, p_key in effective_project_keys.items():
-            if hmac.compare_digest(provided, p_key):
+            if hmac.compare_digest(provided.encode("utf-8"), p_key.encode("utf-8")):
                 matched_role = "project"
                 matched_site = site_name
 
