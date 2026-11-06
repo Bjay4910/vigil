@@ -1,14 +1,17 @@
 """FastAPI application for time-series store."""
 
+import asyncio
+from contextlib import asynccontextmanager
 import hmac
 import math
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, AsyncIterator, Dict, List, Optional, Set, Tuple
 
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from store.checks import parse_checks, parse_interval, run_checks, validate_checks_dict
 from store.engine import TimeSeriesStore, ValidationError
 
 _SITE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
@@ -95,6 +98,8 @@ def create_app(
     store: Optional[TimeSeriesStore] = None,
     api_key: Optional[str] = None,
     project_keys: Optional[Dict[str, str]] = None,
+    checks: Optional[Dict[str, str]] = None,
+    check_interval: Optional[float] = None,
 ) -> FastAPI:
     """Create and configure the FastAPI application."""
     if store is None:
@@ -112,6 +117,30 @@ def create_app(
         )
     else:
         effective_project_keys = _validate_project_keys_dict(project_keys, effective_key)
+
+    if checks is None:
+        effective_checks = parse_checks(os.environ.get("VIGIL_CHECKS"))
+    else:
+        effective_checks = validate_checks_dict(checks)
+
+    if check_interval is None:
+        effective_interval = parse_interval(os.environ.get("VIGIL_CHECK_INTERVAL"))
+    else:
+        if isinstance(check_interval, bool) or not isinstance(check_interval, (int, float)):
+            raise ValueError("VIGIL_CHECK_INTERVAL: must be a positive number")
+        effective_interval = float(check_interval)
+        if math.isnan(effective_interval) or math.isinf(effective_interval) or effective_interval <= 0.0:
+            raise ValueError("VIGIL_CHECK_INTERVAL: must be a positive number")
+
+    raw_check_env = os.environ.get("VIGIL_CHECK_ENV")
+    check_env = raw_check_env if (raw_check_env is not None and raw_check_env != "") else "prod"
+    if (
+        not isinstance(check_env, str)
+        or not check_env.strip()
+        or check_env != check_env.lower()
+        or check_env != check_env.strip()
+    ):
+        raise ValueError("VIGIL_CHECK_ENV: must be a non-empty lowercase string")
 
     def authenticate(request: Request) -> Tuple[str, Optional[str]]:
         if effective_key is None and not effective_project_keys:
@@ -134,7 +163,29 @@ def create_app(
 
         return (matched_role, matched_site)
 
-    app = FastAPI()
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        stop_event: Optional[asyncio.Event] = None
+        task: Optional[asyncio.Task] = None
+        if effective_checks:
+            stop_event = asyncio.Event()
+            task = asyncio.create_task(
+                run_checks(
+                    store,
+                    effective_checks,
+                    effective_interval,
+                    check_env,
+                    stop_event,
+                )
+            )
+        try:
+            yield
+        finally:
+            if stop_event is not None and task is not None:
+                stop_event.set()
+                await task
+
+    app = FastAPI(lifespan=lifespan)
 
     @app.post("/ingest")
     async def ingest(request: Request) -> Any:

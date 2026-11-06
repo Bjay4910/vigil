@@ -174,7 +174,13 @@ Triggered on `pull_request` and `push` to `main` with `permissions: contents: re
 
 The runners are pinned to `ubuntu-24.04` because `ubuntu-latest` moved to Ubuntu 26.04, which does not provide Python 3.9.
 
-*Source: `Dockerfile`, `.dockerignore`, `docker-compose.yml`, `fly.toml`, `.github/workflows/ci.yml`, `tests/test_docker_files.py`, `tests/test_fly_toml.py`, `tests/test_ci_file.py`.*
+### Uptime checker (`store/checks.py`)
+
+- **Lifespan background task:** Started by the FastAPI `lifespan` context manager in `create_app` only when `VIGIL_CHECKS` is non-empty (comma-separated `site=url` pairs, `https` public hostnames only, at most 20 entries), running every `VIGIL_CHECK_INTERVAL` seconds (default `300`, minimum `30`) with `env` set from `VIGIL_CHECK_ENV` (default `prod`).
+- **Thread isolation and hard timeouts:** Network `GET` requests run concurrently in worker threads via `asyncio.to_thread` wrapped in `asyncio.wait_for(..., timeout + 5.0)`, while all `store.write` calls happen back on the event loop thread.
+- **Redirect and body bounds:** Redirects are followed (up to 5 hops) only to the same origin (`scheme`, `host`, `port`) or to an `https` public hostname (`_redirect_allowed` and `_host_is_public`); at most 65,536 bytes of the response body are read and discarded, so page content is never stored—only `uptime_up` (`1` or `0`) and `response_ms` (rounded integer milliseconds) tagged with `site`, `env`, and `service: "uptime"`.
+
+*Source: `Dockerfile`, `.dockerignore`, `docker-compose.yml`, `fly.toml`, `.github/workflows/ci.yml`, `store/checks.py`, `store/api.py`, `tests/test_docker_files.py`, `tests/test_fly_toml.py`, `tests/test_fly_toml_checks.py`, `tests/test_ci_file.py`, `tests/test_checks.py`, `tests/test_api_checks.py`.*
 
 ## 9. Known Limitations
 
@@ -193,6 +199,8 @@ The runners are pinned to `ubuntu-24.04` because `ubuntu-latest` moved to Ubuntu
 - **No limit on response size:** `/query` and `/flags` return every matching point (the 50,000-point full-range query in the benchmark took about 303 ms) (`store/api.py`, `store/engine.py`, `docs/benchmark.md`).
 - **Coverage:** one production client site reports so far, and only form-submission outcomes (1 for a saved submission, 0 for a failed save). There is no uptime checker, so a site that is down and silent produces no data and no flag, and there is no alerting.
 - **Single machine and volume:** the volume is pinned to one physical host, so a host failure means downtime until Fly recovers it; there is no replication or failover.
+- **Uptime checks come from one location:** the checks run from the store's own Fly region, so they show whether a site answers there, not what visitors elsewhere see; if the store is down, no checks run and nothing alerts.
+- **Check data grows without retention:** each site adds two points per interval, about 1 million points a year for five sites at five-minute intervals, which is about half a gigabyte of memory by the measured upper bound (about 490 bytes per point) on a 1 GB machine; there is no retention yet.
 
 *Source: `store/engine.py`, `store/api.py`, `detection/detector.py`, `tests/test_detector.py`, `sdk/src/validate.ts`, `docs/benchmark.md`.*
 

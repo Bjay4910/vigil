@@ -79,6 +79,10 @@ The full spec lives in `docs/metric-format.md`.
 - Run as a single machine by design because the store keeps its data in memory and on a single volume.
 - A new project gets its own API key and a `site` tag added as a `site:key` entry in `VIGIL_PROJECT_KEYS`.
 - The SDK is used from server-side code only, and in a serverless function callers must `await flush()` before returning.
+- The optional uptime checker runs inside the store when `VIGIL_CHECKS` is set (comma-separated `site=url` pairs, `https` public hostnames only, at most 20 sites).
+- It sends a `GET` request to each URL every `VIGIL_CHECK_INTERVAL` seconds (default `300`, minimum `30`) and records `uptime_up` (`1` or `0`) and `response_ms` tagged with `site`, `env` (`VIGIL_CHECK_ENV`, default `prod`), and `service=uptime`.
+- Set `VIGIL_CHECKS` with `fly secrets set` and never in `fly.toml` or the repository.
+- Querying `GET /flags` with `rule=binary` on `uptime_up` flags outages.
 
 ## Contributing
 
