@@ -51,7 +51,7 @@ Response: `{"points": [...]}` with points sorted by `ts`, oldest first. `tags` i
 
 ## Other endpoints
 
-- **`GET /flags`**: Parameters `name`, `from`, `to`, optional `tags`, `rule` (`zscore` or `ewma`, default `zscore`), and `threshold` (default `3.0`). Runs the detector on matching points and returns `{"rule": ..., "threshold": ..., "flags": [...]}` where each element of `flags` is a detector output record described below, sorted by `ts` (oldest first).
+- **`GET /flags`**: Parameters `name`, `from`, `to`, optional `tags`, `rule` (`zscore`, `ewma`, or `binary`, default `zscore`), and `threshold` (default `3.0`). Runs the detector on matching points and returns `{"rule": ..., "threshold": ..., "flags": [...]}` where each element of `flags` is a detector output record described below, sorted by `ts` (oldest first). The `binary` rule applies only to series whose values are all `0` or `1`, flags the first `0` of each outage with the number of consecutive zeros as its `score`, and ignores `threshold`. A single `0` counts as an outage (`score` `1.0`), and non-binary series produce no flags under `rule=binary`. The score counts only the zeros inside the queried time window, so the same outage can score differently depending on where the window starts, and an outage that is already running at the start of the window is flagged at the window's first point. The rule only sees recorded points: if nothing records a value while a site is down (for example because the monitor itself is down), there is nothing to flag.
 - **`GET /health`**: Open endpoint. Returns `{"status": "ok", "points": <count>}`.
 - **`GET /dashboard`**: Open endpoint. Returns the self-contained HTML dashboard page.
 
