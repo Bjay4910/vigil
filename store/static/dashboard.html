@@ -391,6 +391,7 @@
         btn.addEventListener("click", function () {
           const hours = Number(btn.getAttribute("data-hours") || "24");
           setRelativeRange(hours);
+          void loadDashboard();
         });
       });
 
@@ -506,11 +507,12 @@
       }
 
       function renderDashboard(points, flags) {
-        renderFlagsTable(flags);
+        hideTooltip();
         clearChildren(legendContainer);
         clearChildren(summaryContainer);
 
         if (!points || points.length === 0) {
+          renderFlagsTable([]);
           clearChildren(chartContainer);
           const msg = document.createElement("div");
           msg.className = "empty-msg";
@@ -519,6 +521,8 @@
           summaryContainer.textContent = "Points: 0 | Flags: 0 | Min: - | Max: - | Last: -";
           return;
         }
+
+        renderFlagsTable(flags);
 
         let minVal = Infinity;
         let maxVal = -Infinity;
@@ -655,6 +659,7 @@
         let seriesIndex = 0;
         seriesMap.forEach(function (series, sKey) {
           const color = PALETTE[seriesIndex % PALETTE.length];
+          const strokeWidth = seriesIndex === 0 ? "4" : (seriesIndex === 1 ? "3" : "2");
           seriesIndex += 1;
 
           series.points.sort(function (a, b) {
@@ -671,7 +676,7 @@
           path.setAttribute("d", pathParts.join(" "));
           path.setAttribute("fill", "none");
           path.setAttribute("stroke", color);
-          path.setAttribute("stroke-width", "2");
+          path.setAttribute("stroke-width", strokeWidth);
           svg.appendChild(path);
 
           series.points.forEach(function (pt) {
