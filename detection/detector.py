@@ -67,3 +67,59 @@ def ewma_flags(
 ) -> List[Dict[str, Any]]:
     """Flag points far from the exponentially weighted mean of the points before them."""
     return _flag_series(df, lambda v: v.ewm(alpha=alpha, min_periods=warmup), threshold, "ewma")
+
+
+def binary_flags(df: pd.DataFrame) -> List[Dict[str, Any]]:
+    """Flag consecutive runs of 0 in binary (0/1) series at the first 0 of each run.
+
+    A single 0 counts as an outage, and recoveries back to 1 are not flagged.
+    """
+    if df.empty:
+        return []
+
+    flags: List[Dict[str, Any]] = []
+    for (name, _), group in df.groupby(["name", "series"]):
+        group = group.sort_values("ts", kind="stable")
+        raw_values = group["value"].tolist()
+
+        float_values: List[float] = []
+        is_binary = True
+        for v in raw_values:
+            if pd.isna(v):
+                is_binary = False
+                break
+            try:
+                fv = float(v)
+            except (TypeError, ValueError):
+                is_binary = False
+                break
+            if fv != 0.0 and fv != 1.0:
+                is_binary = False
+                break
+            float_values.append(fv)
+
+        if not is_binary:
+            continue
+
+        n = len(float_values)
+        i = 0
+        while i < n:
+            if float_values[i] == 0.0:
+                run_start = i
+                while i < n and float_values[i] == 0.0:
+                    i += 1
+                run_len = i - run_start
+                first_row = group.iloc[run_start]
+                flags.append({
+                    "name": str(name),
+                    "tags": {str(k): str(v) for k, v in dict(first_row["tags"]).items()},
+                    "ts": str(first_row["ts"].strftime("%Y-%m-%dT%H:%M:%SZ")),
+                    "value": 0.0,
+                    "score": float(run_len),
+                    "rule": "binary",
+                })
+            else:
+                i += 1
+
+    flags.sort(key=lambda item: item["ts"])
+    return flags

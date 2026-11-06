@@ -46,7 +46,7 @@ The full spec lives in `docs/metric-format.md`.
 
 - Metrics SDK
 - Time-series store built from scratch
-- Two anomaly rules: z-score and EWMA
+- Three detection rules: z-score, EWMA, and a binary rule for up/down metrics
 - One live dashboard
 - Everything runs with `docker compose up --build`
 - Tests, CI, a store benchmark, and an anomaly backtest

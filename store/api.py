@@ -240,8 +240,8 @@ def create_app(
                 k, v = pair.split(":", 1)
                 tags_dict[k] = v
 
-        if rule not in ("zscore", "ewma"):
-            return error_response("rule: must be zscore or ewma")
+        if rule not in ("zscore", "ewma", "binary"):
+            return error_response("rule: must be zscore, ewma, or binary")
 
         try:
             threshold_val = float(threshold) if threshold is not None else 0.0
@@ -266,13 +266,15 @@ def create_app(
         if not points:
             return {"rule": rule, "threshold": float(threshold_val), "flags": []}
 
-        from detection.detector import ewma_flags, to_frame, zscore_flags
+        from detection.detector import binary_flags, ewma_flags, to_frame, zscore_flags
 
         df = to_frame(points)
         if rule == "zscore":
             raw_flags = zscore_flags(df, threshold=threshold_val)
-        else:
+        elif rule == "ewma":
             raw_flags = ewma_flags(df, threshold=threshold_val)
+        else:
+            raw_flags = binary_flags(df)
 
         cleaned_flags: List[Dict[str, Any]] = [
             {
