@@ -3,11 +3,11 @@
 
 Lightweight observability platform: a metrics SDK, a from-scratch time-series store, and anomaly detection. Built to monitor real client sites and automations.
 
-**Status:** v1 is working end to end and is not yet deployed against real Orductive systems.
+**Status:** In production. Vigil runs on Fly.io as Orductive's observability backend. Each project reports with its own API key; the first production client site is live and reports form-submission outcomes (verified in production on 2026-11-06). Uptime checks for sites without server-side code, and alerting, are not built yet.
 
 ## What it does
 
-Vigil provides a zero-dependency TypeScript SDK (`sdk/`) that validates, batches, and sends metric data points to a FastAPI time-series store (`store/`). The store keeps points sorted in memory per metric and tag set using `bisect`, persists them to an append-only JSON Lines file on disk, and protects `POST /ingest`, `GET /query`, and `GET /flags` with optional `X-API-Key` authentication. An anomaly detector (`detection/`) scores time series using rolling z-score and EWMA rules, and a built-in browser dashboard (`GET /dashboard`) plots series and highlights flagged anomalies.
+Vigil provides a zero-dependency TypeScript SDK (`sdk/`) that validates, batches, and sends metric data points to a FastAPI time-series store (`store/`). The store keeps points sorted in memory per metric and tag set using `bisect`, persists them to an append-only JSON Lines file on disk, and protects `POST /ingest`, `GET /query`, and `GET /flags` with optional `X-API-Key` authentication. An anomaly detector (`detection/`) scores time series using z-score, EWMA, and a binary up/down rule, and a built-in browser dashboard (`GET /dashboard`) plots series and highlights flagged anomalies.
 
 ## Results
 
@@ -25,7 +25,7 @@ See [docs/architecture.md](docs/architecture.md) for the full architecture and d
 | --- | --- |
 | `sdk/` | Small library that services import to send metrics |
 | `store/` | Time-series store with an ingestion API and a query API |
-| `detection/` | Anomaly detection (z-score and EWMA) and backtesting |
+| `detection/` | Anomaly detection (z-score, EWMA, and a binary up/down rule) and backtesting |
 | `store/static/` | Dashboard page, served at `/dashboard` |
 | `docs/` | Metric format, architecture, benchmark and backtest results |
 | `tests/` | Test suite |
@@ -70,6 +70,15 @@ The full spec lives in `docs/metric-format.md`.
    python -m detection.generate --url http://127.0.0.1:8000
    ```
 5. **Send metrics from your own code:** Use the TypeScript SDK in `sdk/` (see `sdk/README.md`).
+
+## Deployment
+
+- Runs in production on Fly.io configured by `fly.toml` and built from the repository `Dockerfile`.
+- Deployed on a single 1 GB shared-CPU machine (`min_machines_running = 1`, `auto_stop_machines = false`) with a persistent volume mounted at `/data` and HTTPS enforced (`force_https = true`).
+- Secrets (`VIGIL_API_KEY` for the unrestricted admin key and `VIGIL_PROJECT_KEYS` as comma-separated `site:key` pairs) are set with `fly secrets set` and are never stored in the repository.
+- Run as a single machine by design because the store keeps its data in memory and on a single volume.
+- A new project gets its own API key and a `site` tag added as a `site:key` entry in `VIGIL_PROJECT_KEYS`.
+- The SDK is used from server-side code only, and in a serverless function callers must `await flush()` before returning.
 
 ## Contributing
 

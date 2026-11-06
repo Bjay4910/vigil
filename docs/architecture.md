@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-Vigil is a lightweight observability platform built from scratch for collecting time-series metrics, storing and querying them, and flagging anomalous values. Services instrument their server-side code with the zero-dependency TypeScript SDK (`sdk/`), which validates, batches, and sends metric points over HTTP to the FastAPI store API (`store/api.py`). The store engine (`store/engine.py`) keeps sorted time series in memory backed by an append-only JSON Lines file on disk, and exposes query and anomaly-flagging endpoints. An anomaly detection module (`detection/detector.py`) scores each series against its own recent history using rolling z-score or exponentially weighted moving average (EWMA) rules, and a self-contained browser dashboard (`store/static/dashboard.html`) visualizes the series and flagged points.
+Vigil is a lightweight observability platform built from scratch for collecting time-series metrics, storing and querying them, and flagging anomalous values. Services instrument their server-side code with the zero-dependency TypeScript SDK (`sdk/`), which validates, batches, and sends metric points over HTTP to the FastAPI store API (`store/api.py`). The store engine (`store/engine.py`) keeps sorted time series in memory backed by an append-only JSON Lines file on disk, and exposes query and anomaly-flagging endpoints. An anomaly detection module (`detection/detector.py`) scores each series using z-score, EWMA, and a binary up/down rule, and a self-contained browser dashboard (`store/static/dashboard.html`) visualizes the series and flagged points.
 
 *Source: `README.md`, `store/api.py`, `store/engine.py`, `detection/detector.py`, `store/static/dashboard.html`, `sdk/src/client.ts`.*
 
@@ -37,11 +37,11 @@ Vigil is a lightweight observability platform built from scratch for collecting 
                 |                               |
    GET /query   |                               |   GET /flags
                 v                               v
-+-------------------------------+   +---------------------------+
-|  Detector library / Dashboard |   |    In-process Detector    |
-|  (detection/detector.py,      |   |  (zscore_flags /          |
-|   store/static/dashboard.html)|   |   ewma_flags -> Dashboard)|
-+-------------------------------+   +---------------------------+
++-------------------------------+   +-------------------------------+
+|  Detector library / Dashboard |   |      In-process Detector      |
+|  (detection/detector.py,      |   |  (zscore_flags / ewma_flags / |
+|   store/static/dashboard.html)|   |   binary_flags -> Dashboard)  |
++-------------------------------+   +-------------------------------+
 ```
 
 *Source: `store/api.py`, `store/engine.py`, `detection/detector.py`, `detection/generate.py`, `sdk/src/client.ts`, `store/static/dashboard.html`.*
@@ -158,15 +158,23 @@ The backtest uses synthetic data (sine-wave daily baseline plus Gaussian noise a
 ### Docker & Docker Compose
 
 - **`Dockerfile`**: Builds from `python:3.9-slim`, installs `requirements.txt` (`fastapi`, `uvicorn`, `pandas`), copies only `store/` and `detection/`, creates a non-root user `vigil` and `/data` directory owned by `vigil` prior to declaring `VOLUME /data`, sets `ENV PYTHONUNBUFFERED=1` and `ENV VIGIL_DATA_PATH=/data/points.jsonl`, exposes port `8000`, configures a `HEALTHCHECK` every `30s` (`timeout=5s`, `start-period=10s`, `retries=3`) against `http://127.0.0.1:8000/health`, and runs `python -m uvicorn store.api:create_app --factory --host 0.0.0.0 --port 8000`.
-- **`docker-compose.yml`**: Runs the `store` service bound to localhost only (`127.0.0.1:8000:8000`), passes `VIGIL_API_KEY: ${VIGIL_API_KEY:-}` from `.env` or the shell environment (defaulting to empty/open if unset), mounts the named volume `vigil-data` at `/data`, and sets `restart: unless-stopped`.
+- **`docker-compose.yml`**: Runs the `store` service bound to localhost only (`127.0.0.1:8000:8000`), passes `VIGIL_API_KEY: ${VIGIL_API_KEY:-}` and `VIGIL_PROJECT_KEYS: ${VIGIL_PROJECT_KEYS:-}` from `.env` or the shell environment (defaulting to empty/open if unset), mounts the named volume `vigil-data` at `/data`, and sets `restart: unless-stopped`.
+
+### Fly.io (`fly.toml`)
+
+- **Region and VM:** Deployed in `primary_region = 'iad'` on one shared-CPU machine (`cpu_kind = 'shared'`, `cpus = 1`, `memory = '1gb'`), built from the repository `Dockerfile`.
+- **Single-machine topology by design:** Runs a single machine (`min_machines_running = 1`, `auto_stop_machines = false`, `auto_start_machines = true`) with a single persistent volume (`source = 'vigil_data'`) mounted at `destination = '/data'`. Running one machine is by design because `TimeSeriesStore` holds series data in memory backed by the JSONL log on that machine's volume; volume snapshots are scheduled with a retention of 5 (as Fly reported at volume creation).
+- **Networking, health checks, and secrets:** Routes external traffic over HTTPS (`force_https = true`) to `internal_port = 8000` and checks `GET /health` over HTTP every `30s` (`timeout = '5s'`, `grace_period = '10s'`). Secrets (`VIGIL_API_KEY`, `VIGIL_PROJECT_KEYS`) are configured via `fly secrets set` and are never placed in `fly.toml`.
 
 ### Continuous Integration (`.github/workflows/ci.yml`)
 
 Triggered on `pull_request` and `push` to `main` with `permissions: contents: read` and per-ref concurrency cancellation:
-- **`python-tests`**: Runs on `ubuntu-latest` with Python `3.9`, installs `requirements-dev.txt`, and executes `python -m pytest -q`.
-- **`sdk-tests`**: Runs on `ubuntu-latest` with Node.js `22` in `sdk/`, and executes `npm ci`, `npm test`, and `npm run build`.
+- **`python-tests`**: Runs on `ubuntu-24.04` with Python `3.9`, installs `requirements-dev.txt`, and executes `python -m pytest -q`.
+- **`sdk-tests`**: Runs on `ubuntu-24.04` with Node.js `22` in `sdk/`, and executes `npm ci`, `npm test`, and `npm run build`.
 
-*Source: `Dockerfile`, `.dockerignore`, `docker-compose.yml`, `.github/workflows/ci.yml`, `tests/test_docker_files.py`, `tests/test_ci_file.py`.*
+The runners are pinned to `ubuntu-24.04` because `ubuntu-latest` moved to Ubuntu 26.04, which does not provide Python 3.9.
+
+*Source: `Dockerfile`, `.dockerignore`, `docker-compose.yml`, `fly.toml`, `.github/workflows/ci.yml`, `tests/test_docker_files.py`, `tests/test_fly_toml.py`, `tests/test_ci_file.py`.*
 
 ## 9. Known Limitations
 
@@ -183,7 +191,8 @@ Triggered on `pull_request` and `push` to `main` with `permissions: contents: re
 - **A project key can write fake points into its own site:** While a project key cannot read or write another site's points, any holder of a project key can still ingest arbitrary or fabricated metric points tagged with its own `site` (`store/api.py`).
 - **No alerting is implemented:** Flags appear only in the dashboard and in `/flags` responses (`store/api.py`, `store/static/dashboard.html`).
 - **No limit on response size:** `/query` and `/flags` return every matching point (the 50,000-point full-range query in the benchmark took about 303 ms) (`store/api.py`, `store/engine.py`, `docs/benchmark.md`).
-- **Not yet monitoring real Orductive systems:** Nothing in the repository currently connects to or monitors a live Orductive site, service, or automation; all existing traffic generators, tests, benchmarks, and backtests use synthetic data for fake clients (`acme`, `globex`, `client01`–`client05`).
+- **Coverage:** one production client site reports so far, and only form-submission outcomes (1 for a saved submission, 0 for a failed save). There is no uptime checker, so a site that is down and silent produces no data and no flag, and there is no alerting.
+- **Single machine and volume:** the volume is pinned to one physical host, so a host failure means downtime until Fly recovers it; there is no replication or failover.
 
 *Source: `store/engine.py`, `store/api.py`, `detection/detector.py`, `tests/test_detector.py`, `sdk/src/validate.ts`, `docs/benchmark.md`.*
 

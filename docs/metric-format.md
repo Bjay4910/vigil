@@ -32,6 +32,7 @@ Use fake client names (like `acme`) in tests, docs, and sample data.
 | `deploy_success` | Deploy succeeded (1 or 0) | Later |
 | `deploy_duration_s` | Deploy time | Later |
 | `lighthouse_score` | Site quality score, 0 to 100 | Later |
+| `form_submission_success` | A form submission was saved (1) or the save failed (0); tagged with the form kind as the `service` tag | First |
 
 ## API
 
