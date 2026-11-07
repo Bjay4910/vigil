@@ -3,11 +3,11 @@
 
 Lightweight observability platform: a metrics SDK, a from-scratch time-series store, and anomaly detection. Built to monitor real client sites and automations.
 
-**Status:** In production. Vigil runs on Fly.io as Orductive's observability backend. Each project reports with its own API key; the first production client site is live and reports form-submission outcomes (verified in production on 2026-11-06). Uptime checks for sites without server-side code, and alerting, are not built yet.
+**Status:** In production. Vigil runs on Fly.io as Orductive's observability backend. Each project reports with its own API key. Three production client sites are checked for uptime and response time every five minutes, and one also reports form-submission outcomes. Outages post an alert to a team chat channel, and a daily summary is scheduled for 8 AM Eastern. Request limits are enabled. Checks run from one location and the store runs as a single machine.
 
 ## What it does
 
-Vigil provides a zero-dependency TypeScript SDK (`sdk/`) that validates, batches, and sends metric data points to a FastAPI time-series store (`store/`). The store keeps points sorted in memory per metric and tag set using `bisect`, persists them to an append-only JSON Lines file on disk, and protects `POST /ingest`, `GET /query`, and `GET /flags` with optional `X-API-Key` authentication. An anomaly detector (`detection/`) scores time series using z-score, EWMA, and a binary up/down rule, and a built-in browser dashboard (`GET /dashboard`) plots series and highlights flagged anomalies.
+Vigil provides a zero-dependency TypeScript SDK (`sdk/`) that validates, batches, and sends metric data points to a FastAPI time-series store (`store/`). The store keeps points sorted in memory per metric and tag set using `bisect`, persists them to an append-only JSON Lines file on disk, and protects `POST /ingest`, `GET /query`, and `GET /flags` with optional `X-API-Key` authentication. An anomaly detector (`detection/`) scores time series using z-score, EWMA, and a binary up/down rule, and a built-in browser dashboard (`GET /dashboard`) plots series and highlights flagged anomalies. An optional uptime checker records uptime and response time for sites with no server-side code, and optional alerting posts outages to Discord or Slack.
 
 ## Results
 
@@ -87,6 +87,8 @@ The full spec lives in `docs/metric-format.md`.
 - A site that fails two uptime checks in a row 15 seconds apart sends one `DOWN` alert that pings everyone, and a failed form save (`0` on `form_submission_success` or `contact_form_success`) sends one alert per site per 10 minutes.
 - Recoveries and a daily 8 AM summary (`VIGIL_DIGEST_HOUR`, default `8`, in `VIGIL_DIGEST_TZ`, default `America/New_York`) are posted silently; a missing morning summary means the store itself is down.
 - Outgoing alerts are capped at `VIGIL_ALERT_MAX_PER_HOUR` messages per rolling hour (default `20`, with the daily summary exempt), and only points matching `VIGIL_ALERT_ENV` (default `prod`) trigger alerts.
+- Per-address request limits are enabled by default (keyed by `Fly-Client-IP`, with IPv6 grouped by `/64`, and `/health` exempt): `VIGIL_RATE_LIMIT` caps requests per minute per address (default `300`, `0` disables) and `VIGIL_AUTH_FAIL_LIMIT` locks out an address for 10 minutes after repeated wrong-key requests within 5 minutes (default `10`, `0` disables).
+- `POST /ingest` enforces a maximum body size via `VIGIL_MAX_BODY_BYTES` (default `1000000` bytes) and a maximum batch size via `VIGIL_MAX_POINTS` (default `5000` points), returning `413` when exceeded.
 
 ## Contributing
 
