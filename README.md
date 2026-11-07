@@ -83,6 +83,10 @@ The full spec lives in `docs/metric-format.md`.
 - It sends a `GET` request to each URL every `VIGIL_CHECK_INTERVAL` seconds (default `300`, minimum `30`) and records `uptime_up` (`1` or `0`) and `response_ms` tagged with `site`, `env` (`VIGIL_CHECK_ENV`, default `prod`), and `service=uptime`.
 - Set `VIGIL_CHECKS` with `fly secrets set` and never in `fly.toml` or the repository.
 - Querying `GET /flags` with `rule=binary` on `uptime_up` flags outages.
+- Alerting is optional and turns on when `VIGIL_ALERT_WEBHOOK` is set as a Fly secret (Discord or Slack webhook URL, never stored in `fly.toml` or the repository; test with `python -m store.alerts --test`).
+- A site that fails two uptime checks in a row 15 seconds apart sends one `DOWN` alert that pings everyone, and a failed form save (`0` on `form_submission_success` or `contact_form_success`) sends one alert per site per 10 minutes.
+- Recoveries and a daily 8 AM summary (`VIGIL_DIGEST_HOUR`, default `8`, in `VIGIL_DIGEST_TZ`, default `America/New_York`) are posted silently; a missing morning summary means the store itself is down.
+- Outgoing alerts are capped at `VIGIL_ALERT_MAX_PER_HOUR` messages per rolling hour (default `20`, with the daily summary exempt), and only points matching `VIGIL_ALERT_ENV` (default `prod`) trigger alerts.
 
 ## Contributing
 
