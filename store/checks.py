@@ -294,12 +294,26 @@ async def _run_single_check(
     )
 
 
+def _parse_check_result(res: Any) -> Tuple[bool, float]:
+    if isinstance(res, tuple) and len(res) == 2:
+        try:
+            is_up = bool(res[0])
+            ms_val = float(res[1])
+            if math.isnan(ms_val) or math.isinf(ms_val) or ms_val < 0.0:
+                ms_val = 0.0
+            return (is_up, ms_val)
+        except Exception:
+            return (False, 0.0)
+    return (False, 0.0)
+
+
 async def run_round(
     store: Any,
     checks: Dict[str, str],
     env: str,
     check_fn: Optional[Callable[..., Tuple[bool, float]]] = None,
     timeout: float = 10.0,
+    retry_delay: float = 0.0,
 ) -> None:
     """Check all configured sites concurrently and record uptime_up and response_ms."""
     if not checks:
@@ -313,23 +327,27 @@ async def run_round(
         for _, url in items
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
+    parsed_results: List[Tuple[bool, float]] = [
+        _parse_check_result(res) for res in results
+    ]
+
+    if retry_delay > 0.0:
+        down_indices = [
+            idx for idx, (is_up, _) in enumerate(parsed_results) if not is_up
+        ]
+        if down_indices:
+            await asyncio.sleep(retry_delay)
+            retry_tasks = [
+                _run_single_check(fn, items[idx][1], timeout)
+                for idx in down_indices
+            ]
+            retry_results = await asyncio.gather(*retry_tasks, return_exceptions=True)
+            for idx, retry_res in zip(down_indices, retry_results):
+                parsed_results[idx] = _parse_check_result(retry_res)
 
     now_ts = format_ts(int(time.time()))
     points: List[Dict[str, Any]] = []
-    for (site, _), res in zip(items, results):
-        if isinstance(res, tuple) and len(res) == 2:
-            try:
-                is_up = bool(res[0])
-                ms_val = float(res[1])
-                if math.isnan(ms_val) or math.isinf(ms_val) or ms_val < 0.0:
-                    ms_val = 0.0
-            except Exception:
-                is_up = False
-                ms_val = 0.0
-        else:
-            is_up = False
-            ms_val = 0.0
-
+    for (site, _), (is_up, ms_val) in zip(items, parsed_results):
         tags = {"site": site, "env": env, "service": "uptime"}
         points.append({
             "name": "uptime_up",
@@ -354,11 +372,18 @@ async def run_checks(
     env: str,
     stop: asyncio.Event,
     check_fn: Optional[Callable[..., Tuple[bool, float]]] = None,
+    retry_delay: float = 0.0,
 ) -> None:
     """Loop running uptime rounds until stop is set."""
     while not stop.is_set():
         try:
-            await run_round(store, checks, env, check_fn=check_fn)
+            await run_round(
+                store,
+                checks,
+                env,
+                check_fn=check_fn,
+                retry_delay=retry_delay,
+            )
         except Exception:
             print("uptime round failed", file=sys.stderr)
 

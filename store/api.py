@@ -7,10 +7,22 @@ import math
 import os
 import re
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, List, Optional, Set, Tuple
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Set, Tuple
 
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from store.alerts import (
+    AlertMonitor,
+    Message,
+    RateLimitedSender,
+    parse_alert_env,
+    parse_digest_hour,
+    parse_max_per_hour,
+    parse_timezone,
+    post_webhook,
+    run_alerts,
+    validate_webhook,
+)
 from store.checks import parse_checks, parse_interval, run_checks, validate_checks_dict
 from store.engine import TimeSeriesStore, ValidationError
 
@@ -100,6 +112,9 @@ def create_app(
     project_keys: Optional[Dict[str, str]] = None,
     checks: Optional[Dict[str, str]] = None,
     check_interval: Optional[float] = None,
+    alert_webhook: Optional[str] = None,
+    alert_send: Optional[Callable[[Message], bool]] = None,
+    alert_interval: float = 60.0,
 ) -> FastAPI:
     """Create and configure the FastAPI application."""
     if store is None:
@@ -142,6 +157,21 @@ def create_app(
     ):
         raise ValueError("VIGIL_CHECK_ENV: must be a non-empty lowercase string")
 
+    raw_webhook = (
+        os.environ.get("VIGIL_ALERT_WEBHOOK")
+        if alert_webhook is None
+        else alert_webhook
+    )
+    effective_webhook: Optional[str] = (
+        validate_webhook(raw_webhook)
+        if (raw_webhook is not None and raw_webhook != "")
+        else None
+    )
+    digest_hour = parse_digest_hour(os.environ.get("VIGIL_DIGEST_HOUR"))
+    digest_tz = parse_timezone(os.environ.get("VIGIL_DIGEST_TZ"))
+    max_per_hour = parse_max_per_hour(os.environ.get("VIGIL_ALERT_MAX_PER_HOUR"))
+    alert_env = parse_alert_env(os.environ.get("VIGIL_ALERT_ENV"))
+
     def authenticate(request: Request) -> Tuple[str, Optional[str]]:
         if effective_key is None and not effective_project_keys:
             return ("open", None)
@@ -165,25 +195,47 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-        stop_event: Optional[asyncio.Event] = None
-        task: Optional[asyncio.Task] = None
+        stop_event = asyncio.Event()
+        tasks: List[asyncio.Task] = []
+        if effective_webhook is not None:
+            monitor = AlertMonitor(
+                store,
+                env=alert_env,
+                tz=digest_tz,
+                digest_hour=digest_hour,
+            )
+            monitor.seed()
+            raw_send: Callable[[Message], bool] = (
+                alert_send
+                if alert_send is not None
+                else (lambda msg: post_webhook(effective_webhook, msg))
+            )
+            sender = RateLimitedSender(raw_send, max_per_hour=max_per_hour)
+            tasks.append(
+                asyncio.create_task(
+                    run_alerts(monitor, sender.send, alert_interval, stop_event)
+                )
+            )
         if effective_checks:
-            stop_event = asyncio.Event()
-            task = asyncio.create_task(
-                run_checks(
-                    store,
-                    effective_checks,
-                    effective_interval,
-                    check_env,
-                    stop_event,
+            check_retry_delay = 15.0 if check_interval is None else 0.0
+            tasks.append(
+                asyncio.create_task(
+                    run_checks(
+                        store,
+                        effective_checks,
+                        effective_interval,
+                        check_env,
+                        stop_event,
+                        retry_delay=check_retry_delay,
+                    )
                 )
             )
         try:
             yield
         finally:
-            if stop_event is not None and task is not None:
+            if tasks:
                 stop_event.set()
-                await task
+                await asyncio.gather(*tasks, return_exceptions=True)
 
     app = FastAPI(lifespan=lifespan)
 
