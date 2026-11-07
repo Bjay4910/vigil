@@ -3,7 +3,9 @@
 
 Lightweight observability platform: a metrics SDK, a from-scratch time-series store, and anomaly detection. Built to monitor real client sites and automations.
 
-**Status:** In production. Vigil runs on Fly.io as Orductive's observability backend. Each project reports with its own API key. Three production client sites are checked for uptime and response time every five minutes, and one also reports form-submission outcomes. Outages post an alert to a team chat channel, and a daily summary is scheduled for 8 AM Eastern. Request limits are enabled. Checks run from one location and the store runs as a single machine.
+**Status:** In production. Vigil runs on Fly.io as Orductive's observability backend. Each project reports with its own API key. Three production client sites are checked for uptime and response time every five minutes, and one also reports form-submission outcomes. Outages post an alert to a team chat channel, and a daily summary posts at 8 AM Eastern. Request limits are enabled. Checks run from one location and the store runs as a single machine.
+
+![Vigil dashboard showing response time for a production site](docs/dashboard.png)
 
 ## What it does
 
