@@ -346,6 +346,66 @@ def create_app(
             "flags": cleaned_flags,
         }
 
+    @app.get("/catalog")
+    async def catalog(request: Request) -> Any:
+        role, caller_site = authenticate(request)
+        if role == "unauthorized":
+            return unauthorized_response()
+
+        raw_series = store.catalog()
+        by_site: Dict[str, Dict[str, Dict[str, Any]]] = {}
+
+        for item in raw_series:
+            tags = item.get("tags") or {}
+            site_val = tags.get("site")
+            if role == "project":
+                if not site_val or site_val != caller_site:
+                    continue
+                site_group = str(site_val)
+            else:
+                site_group = str(site_val) if site_val else "(untagged)"
+
+            metric_name = str(item["name"])
+            last_ts = str(item["last_ts"])
+
+            site_metrics = by_site.setdefault(site_group, {})
+            if metric_name not in site_metrics:
+                site_metrics[metric_name] = {
+                    "envs": set(),
+                    "services": set(),
+                    "last_ts": last_ts,
+                }
+            else:
+                if last_ts > site_metrics[metric_name]["last_ts"]:
+                    site_metrics[metric_name]["last_ts"] = last_ts
+
+            env_val = tags.get("env")
+            if env_val:
+                site_metrics[metric_name]["envs"].add(str(env_val))
+
+            service_val = tags.get("service")
+            if service_val:
+                site_metrics[metric_name]["services"].add(str(service_val))
+
+        sites_list: List[Dict[str, Any]] = []
+        for site_name in sorted(by_site.keys()):
+            metrics_map = by_site[site_name]
+            metrics_list: List[Dict[str, Any]] = []
+            for m_name in sorted(metrics_map.keys()):
+                m_info = metrics_map[m_name]
+                metrics_list.append({
+                    "name": m_name,
+                    "envs": sorted(m_info["envs"]),
+                    "services": sorted(m_info["services"]),
+                    "last_ts": m_info["last_ts"],
+                })
+            sites_list.append({
+                "site": site_name,
+                "metrics": metrics_list,
+            })
+
+        return {"sites": sites_list}
+
     @app.get("/health")
     async def health() -> Any:
         return {"status": "ok", "points": len(store)}
