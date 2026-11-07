@@ -558,7 +558,7 @@ def test_fmt_local() -> None:
 
 
 def test_safe_label() -> None:
-    for valid_name in ("csservicestx", "thrive-aspirehi", "a_b"):
+    for valid_name in ("site-one", "site-two-prod", "a_b"):
         assert _safe_label(valid_name, "unknown-site") == valid_name
 
     for rejected_name in (

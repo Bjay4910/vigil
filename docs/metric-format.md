@@ -59,6 +59,8 @@ Response: `{"points": [...]}` with points sorted by `ts`, oldest first. `tags` i
 
 When `VIGIL_API_KEY` or `VIGIL_PROJECT_KEYS` is set on the store, `/ingest`, `/query`, `/flags`, and `/catalog` require a valid `X-API-Key` header, or they return status `401` with `{"error": "unauthorized"}`. `VIGIL_PROJECT_KEYS` takes a comma-separated list of `site:key` pairs (where each site matches `^[a-z0-9][a-z0-9_-]*$` and each key is at least 16 characters), scoping each project key to a single `site` tag value. A project key may only write points whose `tags.site` matches its site (otherwise `/ingest` returns `403` with `{"error": "forbidden: this key can only write points tagged with its own site"}`) and may only query, flag, or list in `/catalog` its own site (automatically filtering to its site when `site` is omitted from `tags`, or returning `403` with `{"error": "forbidden: this key can only read its own site"}` if another site is requested). The admin key (`VIGIL_API_KEY`) remains unrestricted and can read and write all sites.
 
+All endpoints except `GET /health` are subject to per-address request limits: the store returns `429` (`{"error": "too many requests"}`) with a `Retry-After` header when a client address exceeds `VIGIL_RATE_LIMIT` requests per minute (default `300`) or is locked out for 10 minutes after `VIGIL_AUTH_FAIL_LIMIT` wrong-key requests (default `10`). On `POST /ingest`, an invalid `Content-Length` header returns `400` (`{"error": "body: invalid Content-Length"}`), and a body exceeding `VIGIL_MAX_BODY_BYTES` (default `1000000` bytes) or `VIGIL_MAX_POINTS` (default `5000` points) returns `413`; `GET /health` is never rate-limited.
+
 ## Detector output
 
 One record per flagged point:

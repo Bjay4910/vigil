@@ -3,6 +3,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 import hmac
+import json
 import math
 import os
 import re
@@ -25,6 +26,14 @@ from store.alerts import (
 )
 from store.checks import parse_checks, parse_interval, run_checks, validate_checks_dict
 from store.engine import TimeSeriesStore, ValidationError
+from store.ratelimit import (
+    RateLimiter,
+    client_key,
+    parse_auth_fail_limit,
+    parse_max_body,
+    parse_max_points,
+    parse_rate_limit,
+)
 
 _SITE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
@@ -42,6 +51,11 @@ def unauthorized_response() -> JSONResponse:
 def forbidden_response(message: str) -> JSONResponse:
     """Return a standard 403 JSON forbidden response."""
     return JSONResponse(status_code=403, content={"error": message})
+
+
+def payload_too_large_response(message: str) -> JSONResponse:
+    """Return a standard 413 JSON payload-too-large response."""
+    return JSONResponse(status_code=413, content={"error": message})
 
 
 def _validate_project_entry(
@@ -115,6 +129,11 @@ def create_app(
     alert_webhook: Optional[str] = None,
     alert_send: Optional[Callable[[Message], bool]] = None,
     alert_interval: float = 60.0,
+    rate_limit: Optional[int] = None,
+    auth_fail_limit: Optional[int] = None,
+    max_body_bytes: Optional[int] = None,
+    max_points: Optional[int] = None,
+    limiter_now: Optional[Callable[[], float]] = None,
 ) -> FastAPI:
     """Create and configure the FastAPI application."""
     if store is None:
@@ -172,11 +191,38 @@ def create_app(
     max_per_hour = parse_max_per_hour(os.environ.get("VIGIL_ALERT_MAX_PER_HOUR"))
     alert_env = parse_alert_env(os.environ.get("VIGIL_ALERT_ENV"))
 
+    effective_rate_limit = parse_rate_limit(
+        os.environ.get("VIGIL_RATE_LIMIT") if rate_limit is None else rate_limit
+    )
+    effective_auth_fail_limit = parse_auth_fail_limit(
+        os.environ.get("VIGIL_AUTH_FAIL_LIMIT")
+        if auth_fail_limit is None
+        else auth_fail_limit
+    )
+    effective_max_body = parse_max_body(
+        os.environ.get("VIGIL_MAX_BODY_BYTES")
+        if max_body_bytes is None
+        else max_body_bytes
+    )
+    effective_max_points = parse_max_points(
+        os.environ.get("VIGIL_MAX_POINTS") if max_points is None else max_points
+    )
+    limiter = RateLimiter(
+        cap_per_minute=effective_rate_limit,
+        fail_limit=effective_auth_fail_limit,
+        now_fn=limiter_now,
+    )
+
+    def _request_client_key(request: Request) -> str:
+        peer = request.client.host if request.client else None
+        return client_key(request.headers.get("Fly-Client-IP"), peer)
+
     def authenticate(request: Request) -> Tuple[str, Optional[str]]:
         if effective_key is None and not effective_project_keys:
             return ("open", None)
         provided = request.headers.get("X-API-Key")
         if provided is None:
+            limiter.record_failure(_request_client_key(request))
             return ("unauthorized", None)
 
         matched_role = "unauthorized"
@@ -190,6 +236,9 @@ def create_app(
             if hmac.compare_digest(provided.encode("utf-8"), p_key.encode("utf-8")):
                 matched_role = "project"
                 matched_site = site_name
+
+        if matched_role == "unauthorized":
+            limiter.record_failure(_request_client_key(request))
 
         return (matched_role, matched_site)
 
@@ -239,14 +288,53 @@ def create_app(
 
     app = FastAPI(lifespan=lifespan)
 
+    @app.middleware("http")
+    async def rate_limit_middleware(
+        request: Request,
+        call_next: Callable[[Request], Any],
+    ) -> Any:
+        if request.url.path == "/health":
+            return await call_next(request)
+        key = _request_client_key(request)
+        retry_after = limiter.check(key)
+        if retry_after is not None:
+            return JSONResponse(
+                status_code=429,
+                content={"error": "too many requests"},
+                headers={"Retry-After": str(retry_after)},
+            )
+        return await call_next(request)
+
     @app.post("/ingest")
     async def ingest(request: Request) -> Any:
         role, caller_site = authenticate(request)
         if role == "unauthorized":
             return unauthorized_response()
 
+        raw_cl = request.headers.get("Content-Length")
+        if raw_cl is not None:
+            stripped_cl = raw_cl.strip()
+            if not re.match(r"^\d+$", stripped_cl):
+                return error_response("body: invalid Content-Length")
+            cl_val = int(stripped_cl)
+            if cl_val > effective_max_body:
+                return payload_too_large_response(
+                    f"body: too large (maximum {effective_max_body} bytes)"
+                )
+
+        chunks: List[bytes] = []
+        total_bytes = 0
+        async for chunk in request.stream():
+            total_bytes += len(chunk)
+            if total_bytes > effective_max_body:
+                return payload_too_large_response(
+                    f"body: too large (maximum {effective_max_body} bytes)"
+                )
+            chunks.append(chunk)
+
+        raw_body = b"".join(chunks)
         try:
-            body = await request.json()
+            body = json.loads(raw_body)
         except Exception:
             return error_response("body: must be valid JSON")
 
@@ -254,6 +342,10 @@ def create_app(
             return error_response("points: must be a list")
 
         points = body["points"]
+        if len(points) > effective_max_points:
+            return payload_too_large_response(
+                f"points: too many points in one request (maximum {effective_max_points})"
+            )
         if role == "project":
             for pt in points:
                 if isinstance(pt, dict):
