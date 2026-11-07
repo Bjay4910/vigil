@@ -263,18 +263,32 @@
 
     <div class="controls">
       <div class="field">
-        <label for="api-key-input">API Key</label>
+        <label for="api-key-input">API Key <span id="key-status" style="font-weight: 400;"></span></label>
         <input type="password" id="api-key-input" placeholder="Optional X-API-Key" autocomplete="off">
       </div>
 
       <div class="field">
-        <label for="metric-input">Metric</label>
-        <input type="text" id="metric-input" value="page_load_ms">
+        <label for="site-input">Site</label>
+        <input type="text" id="site-input" list="site-datalist" placeholder="site-a">
+        <datalist id="site-datalist"></datalist>
       </div>
 
       <div class="field">
-        <label for="tags-input">Tags</label>
-        <input type="text" id="tags-input" placeholder="client:acme,env:prod">
+        <label for="metric-input">Metric</label>
+        <input type="text" id="metric-input" list="metric-datalist" value="page_load_ms">
+        <datalist id="metric-datalist"></datalist>
+      </div>
+
+      <div class="field" style="min-width: 90px; flex: 0 1 110px;">
+        <label for="env-select">Env</label>
+        <select id="env-select">
+          <option value="all">all</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="tags-input">Extra filter (optional)</label>
+        <input type="text" id="tags-input" placeholder="client:acme,service:uptime">
       </div>
 
       <div class="field">
@@ -294,12 +308,13 @@
         <button type="button" data-hours="168">7d</button>
       </div>
 
-      <div class="field" style="min-width: 90px; flex: 0 1 110px;">
+      <div class="field" style="min-width: 120px; flex: 0 1 150px;">
         <label for="rule-select">Rule</label>
         <select id="rule-select">
-          <option value="zscore">zscore</option>
+          <option value="none">none (chart only)</option>
+          <option value="zscore" selected>zscore</option>
           <option value="ewma">ewma</option>
-          <option value="binary">binary (up/down)</option>
+          <option value="binary">uptime (up/down)</option>
         </select>
       </div>
 
@@ -354,9 +369,16 @@
 
       let apiKeyMemory = "";
       let refreshTimer = null;
+      let catalogSites = [];
+      let catalogLoaded = false;
 
       const apiKeyInput = document.getElementById("api-key-input");
+      const keyStatus = document.getElementById("key-status");
+      const siteInput = document.getElementById("site-input");
+      const siteDatalist = document.getElementById("site-datalist");
       const metricInput = document.getElementById("metric-input");
+      const metricDatalist = document.getElementById("metric-datalist");
+      const envSelect = document.getElementById("env-select");
       const tagsInput = document.getElementById("tags-input");
       const fromInput = document.getElementById("from-input");
       const toInput = document.getElementById("to-input");
@@ -371,9 +393,176 @@
       const flagsContainer = document.getElementById("flags-container");
       const tooltip = document.getElementById("tooltip");
 
+      function syncThresholdState() {
+        const r = ruleSelect.value;
+        thresholdInput.disabled = !(r === "zscore" || r === "ewma");
+      }
+
+      function maybeAutoSelectBinaryRule() {
+        const m = metricInput.value.trim();
+        if (m.endsWith("_up") || m.endsWith("_success")) {
+          ruleSelect.value = "binary";
+          syncThresholdState();
+        }
+      }
+
+      ruleSelect.addEventListener("change", function () {
+        syncThresholdState();
+      });
+
+      metricInput.addEventListener("input", function () {
+        maybeAutoSelectBinaryRule();
+      });
+      metricInput.addEventListener("change", function () {
+        maybeAutoSelectBinaryRule();
+      });
+
+      syncThresholdState();
+
       apiKeyInput.addEventListener("input", function () {
         apiKeyMemory = apiKeyInput.value.trim();
+        catalogLoaded = false;
       });
+
+      apiKeyInput.addEventListener("blur", function () {
+        void loadCatalog();
+      });
+
+      apiKeyInput.addEventListener("keydown", function (evt) {
+        if (evt.key === "Enter") {
+          evt.preventDefault();
+          void loadCatalog();
+        }
+      });
+
+      function populateSiteDetails(siteValue) {
+        clearChildren(metricDatalist);
+        clearChildren(envSelect);
+
+        const allOpt = document.createElement("option");
+        allOpt.value = "all";
+        allOpt.textContent = "all";
+        envSelect.appendChild(allOpt);
+
+        const match = catalogSites.find(function (s) {
+          return s.site === siteValue;
+        });
+        if (!match || !Array.isArray(match.metrics)) {
+          return;
+        }
+
+        const envSet = new Set();
+        let hasUptimeUp = false;
+
+        match.metrics.forEach(function (m) {
+          const opt = document.createElement("option");
+          opt.value = String(m.name);
+          opt.textContent = String(m.name);
+          metricDatalist.appendChild(opt);
+          if (m.name === "uptime_up") {
+            hasUptimeUp = true;
+          }
+          if (Array.isArray(m.envs)) {
+            m.envs.forEach(function (e) {
+              envSet.add(String(e));
+            });
+          }
+        });
+
+        const sortedEnvs = Array.from(envSet).sort();
+        sortedEnvs.forEach(function (envName) {
+          const opt = document.createElement("option");
+          opt.value = envName;
+          opt.textContent = envName;
+          envSelect.appendChild(opt);
+        });
+
+        if (sortedEnvs.indexOf("prod") !== -1) {
+          envSelect.value = "prod";
+        } else {
+          envSelect.value = "all";
+        }
+
+        if (hasUptimeUp) {
+          metricInput.value = "uptime_up";
+          maybeAutoSelectBinaryRule();
+        }
+      }
+
+      siteInput.addEventListener("input", function () {
+        populateSiteDetails(siteInput.value.trim());
+      });
+      siteInput.addEventListener("change", function () {
+        populateSiteDetails(siteInput.value.trim());
+      });
+
+      async function loadCatalog() {
+        apiKeyMemory = apiKeyInput.value.trim();
+        const headers = {};
+        if (apiKeyMemory.length > 0) {
+          headers["X-API-Key"] = apiKeyMemory;
+        }
+
+        let res;
+        try {
+          res = await fetch("/catalog", { headers: headers });
+        } catch (_err) {
+          keyStatus.textContent = "Cannot reach the store";
+          catalogLoaded = false;
+          return false;
+        }
+
+        if (res.status === 401) {
+          keyStatus.textContent = "Wrong or missing API key";
+          catalogLoaded = false;
+          return false;
+        }
+
+        if (!res.ok) {
+          keyStatus.textContent = "Cannot reach the store";
+          catalogLoaded = false;
+          return false;
+        }
+
+        let data;
+        try {
+          data = await res.json();
+        } catch (_e) {
+          keyStatus.textContent = "Cannot reach the store";
+          catalogLoaded = false;
+          return false;
+        }
+
+        catalogSites = Array.isArray(data.sites) ? data.sites : [];
+        catalogLoaded = true;
+        keyStatus.textContent = "Connected: " + catalogSites.length + " sites";
+
+        clearChildren(siteDatalist);
+        catalogSites.forEach(function (s) {
+          const opt = document.createElement("option");
+          opt.value = String(s.site);
+          opt.textContent = String(s.site);
+          siteDatalist.appendChild(opt);
+        });
+
+        if (catalogSites.length === 1) {
+          siteInput.value = String(catalogSites[0].site);
+          populateSiteDetails(siteInput.value.trim());
+        } else if (siteInput.value.trim().length > 0) {
+          populateSiteDetails(siteInput.value.trim());
+        } else {
+          const anyUptime = catalogSites.some(function (s) {
+            return Array.isArray(s.metrics) && s.metrics.some(function (m) {
+              return m.name === "uptime_up";
+            });
+          });
+          if (anyUptime) {
+            metricInput.value = "uptime_up";
+            maybeAutoSelectBinaryRule();
+          }
+        }
+        return true;
+      }
 
       function setRelativeRange(hours) {
         const now = new Date();
@@ -735,12 +924,32 @@
         chartContainer.appendChild(svg);
       }
 
+      function buildTagsFilter() {
+        const parts = [];
+        const siteVal = siteInput.value.trim();
+        if (siteVal.length > 0 && siteVal !== "(untagged)") {
+          parts.push("site:" + siteVal);
+        }
+        const envVal = envSelect.value.trim();
+        if (envVal.length > 0 && envVal !== "all") {
+          parts.push("env:" + envVal);
+        }
+        const extraVal = tagsInput.value.trim();
+        if (extraVal.length > 0) {
+          parts.push(extraVal);
+        }
+        return parts.join(",");
+      }
+
       async function loadDashboard() {
         apiKeyMemory = apiKeyInput.value.trim();
+        if (!catalogLoaded) {
+          await loadCatalog();
+        }
         const name = metricInput.value.trim();
         const fromVal = fromInput.value.trim();
         const toVal = toInput.value.trim();
-        const tagsVal = tagsInput.value.trim();
+        const tagsVal = buildTagsFilter();
         const ruleVal = ruleSelect.value;
         const thresholdVal = thresholdInput.value.trim();
 
@@ -752,14 +961,56 @@
           queryParams.set("tags", tagsVal);
         }
 
-        const flagsParams = new URLSearchParams(queryParams);
-        flagsParams.set("rule", ruleVal);
-        flagsParams.set("threshold", thresholdVal);
-
         const headers = {};
         if (apiKeyMemory.length > 0) {
           headers["X-API-Key"] = apiKeyMemory;
         }
+
+        if (ruleVal === "none") {
+          let queryRes;
+          try {
+            queryRes = await fetch("/query?" + queryParams.toString(), { headers: headers });
+          } catch (_err) {
+            showError("Cannot reach the store");
+            return;
+          }
+
+          if (queryRes.status === 401) {
+            showError("Wrong or missing API key");
+            return;
+          }
+
+          if (queryRes.status === 400) {
+            try {
+              const errJson = await queryRes.json();
+              showError(errJson && errJson.error ? String(errJson.error) : "Invalid request");
+            } catch (_e) {
+              showError("Invalid request");
+            }
+            return;
+          }
+
+          if (!queryRes.ok) {
+            showError("Cannot reach the store");
+            return;
+          }
+
+          let queryData;
+          try {
+            queryData = await queryRes.json();
+          } catch (_e) {
+            showError("Cannot reach the store");
+            return;
+          }
+
+          hideError();
+          renderDashboard(queryData.points || [], []);
+          return;
+        }
+
+        const flagsParams = new URLSearchParams(queryParams);
+        flagsParams.set("rule", ruleVal);
+        flagsParams.set("threshold", thresholdVal);
 
         let queryRes;
         let flagsRes;

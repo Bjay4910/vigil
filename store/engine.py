@@ -224,6 +224,24 @@ class TimeSeriesStore:
         collected.sort(key=lambda item: item[0])
         return [item[1] for item in collected]
 
+    def catalog(self) -> List[Dict[str, Any]]:
+        """Return a read-only summary of all stored series sorted by name and tags."""
+        entries: List[Tuple[Tuple[str, Tuple[Tuple[str, str], ...]], Dict[str, Any]]] = []
+        for series_key, series in self._series_map.items():
+            if not series.timestamps:
+                continue
+            entries.append((
+                series_key,
+                {
+                    "name": series.name,
+                    "tags": dict(series.tags),
+                    "points": len(series.timestamps),
+                    "last_ts": format_ts(series.timestamps[-1]),
+                },
+            ))
+        entries.sort(key=lambda item: item[0])
+        return [item[1] for item in entries]
+
     def __len__(self) -> int:
         """Return the total number of points stored."""
         return self._total_points
